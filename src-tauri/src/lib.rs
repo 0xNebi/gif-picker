@@ -1,8 +1,12 @@
 use std::collections::HashMap;
+use std::io::Read;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicUsize, Ordering};
 
+use rayon::prelude::*;
 use serde::Serialize;
 use sha2::{Digest, Sha256};
+use tauri::Emitter;
 use tauri::Manager;
 use tauri::path::BaseDirectory;
 use tauri_plugin_opener::OpenerExt;
@@ -244,24 +248,127 @@ struct DuplicateFileGroup {
     files: Vec<DuplicateFileEntry>,
 }
 
-/// Groups library files by exact content hash (SHA-256).
-#[tauri::command]
-fn find_duplicate_files(paths: Vec<String>) -> Result<Vec<DuplicateFileGroup>, String> {
-    let mut by_hash: HashMap<String, Vec<DuplicateFileEntry>> = HashMap::new();
+#[derive(Serialize, Clone)]
+struct DuplicateScanProgress {
+    phase: String,
+    scanned: usize,
+    total: usize,
+    current_path: Option<String>,
+}
 
-    for path in paths {
-        let file_path = Path::new(&path);
-        if !file_path.is_file() {
-            continue;
+const HASH_READ_BUFFER_BYTES: usize = 256 * 1024;
+
+fn emit_scan_progress(app: &tauri::AppHandle, progress: DuplicateScanProgress) {
+    let _ = app.emit("duplicate-scan-progress", progress);
+}
+
+fn hash_file_streaming(path: &str) -> Result<(String, u64, String), String> {
+    let file_path = Path::new(path);
+    let file = std::fs::File::open(file_path)
+        .map_err(|error| format!("Failed to open {path}: {error}"))?;
+    let size = file
+        .metadata()
+        .map_err(|error| format!("Failed to read metadata for {path}: {error}"))?
+        .len();
+
+    let mut hasher = Sha256::new();
+    let mut reader = std::io::BufReader::with_capacity(HASH_READ_BUFFER_BYTES, file);
+    let mut buffer = [0u8; HASH_READ_BUFFER_BYTES];
+
+    loop {
+        let read_bytes = reader
+            .read(&mut buffer)
+            .map_err(|error| format!("Failed to read {path}: {error}"))?;
+        if read_bytes == 0 {
+            break;
+        }
+        hasher.update(&buffer[..read_bytes]);
+    }
+
+    Ok((path.to_string(), size, format!("{:x}", hasher.finalize())))
+}
+
+fn find_duplicate_files_blocking(
+    app: tauri::AppHandle,
+    paths: Vec<String>,
+) -> Result<Vec<DuplicateFileGroup>, String> {
+    let total = paths.len();
+    let mut by_size: HashMap<u64, Vec<String>> = HashMap::new();
+
+    for (index, path) in paths.iter().enumerate() {
+        let file_path = Path::new(path);
+        if file_path.is_file() {
+            if let Ok(metadata) = std::fs::metadata(file_path) {
+                by_size
+                    .entry(metadata.len())
+                    .or_default()
+                    .push(path.clone());
+            }
         }
 
-        let bytes = std::fs::read(file_path).map_err(|e| format!("Failed to read {path}: {e}"))?;
-        let size = bytes.len() as u64;
-        let mut hasher = Sha256::new();
-        hasher.update(&bytes);
-        let hash = format!("{:x}", hasher.finalize());
+        let scanned = index + 1;
+        if scanned == 1 || scanned == total || scanned % 8 == 0 {
+            emit_scan_progress(
+                &app,
+                DuplicateScanProgress {
+                    phase: "metadata".to_string(),
+                    scanned,
+                    total,
+                    current_path: Some(path.clone()),
+                },
+            );
+        }
+    }
 
-        by_hash.entry(hash).or_default().push(DuplicateFileEntry { path, size });
+    let candidates: Vec<String> = by_size
+        .into_values()
+        .filter(|group| group.len() >= 2)
+        .flatten()
+        .collect();
+
+    let hash_total = candidates.len();
+    if hash_total == 0 {
+        emit_scan_progress(
+            &app,
+            DuplicateScanProgress {
+                phase: "hashing".to_string(),
+                scanned: 0,
+                total: 0,
+                current_path: None,
+            },
+        );
+        return Ok(Vec::new());
+    }
+
+    let hash_scanned = AtomicUsize::new(0);
+    let hash_emit_every = (hash_total / 100).max(1);
+
+    let hashed = candidates
+        .par_iter()
+        .map(|path| -> Result<(String, u64, String), String> {
+            let result = hash_file_streaming(path)?;
+            let scanned = hash_scanned.fetch_add(1, Ordering::Relaxed) + 1;
+            if scanned == 1 || scanned == hash_total || scanned % hash_emit_every == 0 {
+                emit_scan_progress(
+                    &app,
+                    DuplicateScanProgress {
+                        phase: "hashing".to_string(),
+                        scanned,
+                        total: hash_total,
+                        current_path: Some(path.clone()),
+                    },
+                );
+            }
+            Ok(result)
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+
+    let mut by_hash: HashMap<String, Vec<DuplicateFileEntry>> = HashMap::new();
+    for (path, size, hash) in hashed {
+        by_hash
+            .entry(hash)
+            .or_default()
+            .push(DuplicateFileEntry { path, size });
     }
 
     let mut groups: Vec<DuplicateFileGroup> = by_hash
@@ -281,6 +388,17 @@ fn find_duplicate_files(paths: Vec<String>) -> Result<Vec<DuplicateFileGroup>, S
     });
 
     Ok(groups)
+}
+
+/// Groups library files by exact content hash (SHA-256).
+#[tauri::command]
+async fn find_duplicate_files(
+    app: tauri::AppHandle,
+    paths: Vec<String>,
+) -> Result<Vec<DuplicateFileGroup>, String> {
+    tauri::async_runtime::spawn_blocking(move || find_duplicate_files_blocking(app, paths))
+        .await
+        .map_err(|error| format!("Duplicate scan task failed: {error}"))?
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]

@@ -16,10 +16,13 @@ import { Button } from "./ui/Button";
 import { IconButton } from "./ui/IconButton";
 import type { AppSettings } from "../store/useLibraryStore";
 import {
+  duplicateScanProgressLabel,
+  duplicateScanProgressPercent,
   findDuplicateFiles,
   formatFileSize,
   pathsToExcludeFromDuplicateGroups,
   type DuplicateFileGroup,
+  type DuplicateScanProgress,
 } from "../utils/duplicates";
 
 type SettingsPanel = "excluded" | "tags" | "duplicates";
@@ -143,6 +146,8 @@ export const SettingsView = forwardRef<SettingsViewHandle, SettingsViewProps>(
     const [duplicateScanError, setDuplicateScanError] = useState<string | null>(
       null,
     );
+    const [duplicateScanProgress, setDuplicateScanProgress] =
+      useState<DuplicateScanProgress | null>(null);
 
     const showPreviewColumn =
       activePanel === "excluded" || activePanel === "duplicates";
@@ -211,9 +216,16 @@ export const SettingsView = forwardRef<SettingsViewHandle, SettingsViewProps>(
 
       setIsScanningDuplicates(true);
       setDuplicateScanError(null);
+      setDuplicateScanProgress({
+        phase: "metadata",
+        scanned: 0,
+        total: libraryPaths.length,
+      });
 
       try {
-        const groups = await findDuplicateFiles(libraryPaths);
+        const groups = await findDuplicateFiles(libraryPaths, (progress) => {
+          setDuplicateScanProgress(progress);
+        });
         setDuplicateGroups(groups);
         if (groups.length === 0) {
           setDuplicateScanError("No duplicate files found.");
@@ -224,6 +236,7 @@ export const SettingsView = forwardRef<SettingsViewHandle, SettingsViewProps>(
         setDuplicateGroups([]);
       } finally {
         setIsScanningDuplicates(false);
+        setDuplicateScanProgress(null);
       }
     }, [libraryPaths]);
 
@@ -510,6 +523,27 @@ export const SettingsView = forwardRef<SettingsViewHandle, SettingsViewProps>(
                     Exclude all duplicates
                   </Button>
                 </div>
+
+                {isScanningDuplicates && duplicateScanProgress && (
+                  <div className="duplicate-scan-progress">
+                    <div className="duplicate-scan-progress__label">
+                      {duplicateScanProgressLabel(duplicateScanProgress)}
+                    </div>
+                    <div className="duplicate-scan-progress__track">
+                      <div
+                        className="duplicate-scan-progress__fill"
+                        style={{
+                          width: `${duplicateScanProgressPercent(duplicateScanProgress)}%`,
+                        }}
+                      />
+                    </div>
+                    {duplicateScanProgress.currentPath && (
+                      <div className="duplicate-scan-progress__file">
+                        {fileNameFromPath(duplicateScanProgress.currentPath)}
+                      </div>
+                    )}
+                  </div>
+                )}
 
                 {duplicateScanError && (
                   <p className="settings-empty-note">{duplicateScanError}</p>

@@ -1,4 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
+import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 
 export interface DuplicateFileEntry {
   path: string;
@@ -10,10 +11,42 @@ export interface DuplicateFileGroup {
   files: DuplicateFileEntry[];
 }
 
+export interface DuplicateScanProgress {
+  phase: "metadata" | "hashing";
+  scanned: number;
+  total: number;
+  currentPath?: string;
+}
+
+function normalizeScanProgress(
+  payload: DuplicateScanProgress,
+): DuplicateScanProgress {
+  return {
+    ...payload,
+    phase: payload.phase === "hashing" ? "hashing" : "metadata",
+  };
+}
+
 export async function findDuplicateFiles(
   paths: string[],
+  onProgress?: (progress: DuplicateScanProgress) => void,
 ): Promise<DuplicateFileGroup[]> {
-  return invoke<DuplicateFileGroup[]>("find_duplicate_files", { paths });
+  let unlisten: UnlistenFn | undefined;
+
+  if (onProgress) {
+    unlisten = await listen<DuplicateScanProgress>(
+      "duplicate-scan-progress",
+      (event) => {
+        onProgress(normalizeScanProgress(event.payload));
+      },
+    );
+  }
+
+  try {
+    return await invoke<DuplicateFileGroup[]>("find_duplicate_files", { paths });
+  } finally {
+    await unlisten?.();
+  }
 }
 
 export function pathsToExcludeFromDuplicateGroups(
@@ -35,4 +68,30 @@ export function formatFileSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+export function duplicateScanProgressPercent(
+  progress: DuplicateScanProgress,
+): number {
+  if (progress.total <= 0) return 0;
+  return Math.min(100, Math.round((progress.scanned / progress.total) * 100));
+}
+
+export function duplicateScanProgressLabel(
+  progress: DuplicateScanProgress,
+): string {
+  if (progress.phase === "metadata") {
+    return `Scanning file sizes… ${progress.scanned} / ${progress.total}`;
+  }
+
+  if (progress.total <= 0) {
+    return "No size matches to compare";
+  }
+
+  return `Comparing file contents… ${progress.scanned} / ${progress.total}`;
+}
+
+export function fileNameFromPath(path: string): string {
+  const parts = path.replace(/\\/g, "/").split("/");
+  return parts[parts.length - 1] || path;
 }
