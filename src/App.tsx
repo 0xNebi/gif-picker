@@ -729,7 +729,7 @@ export function App() {
             {folders.map((folder) => (
               <div
                 key={folder.path}
-                className={`nav-item ${
+                className={`nav-item nav-item--folder ${
                   sidebarView === "folder" &&
                   selectedFolder === folder.path &&
                   mainView === "library"
@@ -739,7 +739,7 @@ export function App() {
                 onClick={() => selectFolder(folder.path)}
               >
                 <div className="nav-item-body">
-                  <div>{folder.name}</div>
+                  <div className="folder-name">{folder.name}</div>
                   <div className="folder-path">{folder.path}</div>
                 </div>
                 <div className="nav-item-actions">
