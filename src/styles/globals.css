@@ -600,6 +600,20 @@ input, textarea, .search-input, .modal-path, .folder-path {
   align-items: center;
 }
 
+.nav-item--folder-compact {
+  min-height: 36px;
+}
+
+.nav-item--folder-compact .nav-item-body {
+  display: flex;
+  align-items: center;
+  min-height: 100%;
+}
+
+.nav-item--folder-compact .folder-name {
+  line-height: 1.2;
+}
+
 .folder-name {
   font-size: 13px;
   font-weight: 500;

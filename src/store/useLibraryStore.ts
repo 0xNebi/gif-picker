@@ -29,6 +29,8 @@ export interface AppSettings {
   thumbnailCacheLimitMb: number;
   /** Copy media to clipboard using a .gif filename (file copy, not bitmap). */
   copyAsGif: boolean;
+  /** Show full folder path under each folder name in the sidebar. */
+  showFolderPaths: boolean;
 }
 
 export interface LibraryMeta {
@@ -82,6 +84,7 @@ const DEFAULT_SETTINGS: AppSettings = {
   previewOnHover: false,
   thumbnailCacheLimitMb: 128,
   copyAsGif: false,
+  showFolderPaths: true,
 };
 
 const DEFAULT_META: LibraryMeta = {

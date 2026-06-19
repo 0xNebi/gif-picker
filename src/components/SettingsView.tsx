@@ -141,6 +141,12 @@ export const SettingsView = forwardRef<SettingsViewHandle, SettingsViewProps>(
               checked={settings.includeVideos}
               onChange={(includeVideos) => onChange({ includeVideos })}
             />
+            <Toggle
+              label="Show folder paths"
+              hint="Display the full path under each folder name in the sidebar"
+              checked={settings.showFolderPaths}
+              onChange={(showFolderPaths) => onChange({ showFolderPaths })}
+            />
           </section>
 
           <section className="settings-section">

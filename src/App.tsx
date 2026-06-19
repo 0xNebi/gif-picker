@@ -730,7 +730,9 @@ export function App() {
             {folders.map((folder) => (
               <div
                 key={folder.path}
-                className={`nav-item nav-item--folder ${
+                className={`nav-item nav-item--folder${
+                  settings.showFolderPaths ? "" : " nav-item--folder-compact"
+                } ${
                   sidebarView === "folder" &&
                   selectedFolder === folder.path &&
                   mainView === "library"
@@ -741,7 +743,9 @@ export function App() {
               >
                 <div className="nav-item-body">
                   <div className="folder-name">{folder.name}</div>
-                  <FolderPathLabel path={folder.path} />
+                  {settings.showFolderPaths && (
+                    <FolderPathLabel path={folder.path} />
+                  )}
                 </div>
                 <div className="nav-item-actions">
                   <span className="nav-count">
