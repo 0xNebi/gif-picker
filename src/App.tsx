@@ -151,6 +151,7 @@ export function App() {
     deleteTag,
     reorderTags,
     excludePath,
+    excludePaths,
     restoreExcluded,
     addKeyword,
   } = useLibraryStore();
@@ -284,6 +285,11 @@ export function App() {
   const visibleMedia = useMemo(
     () => media.filter((item) => !excludedSet.has(item.path)),
     [media, excludedSet],
+  );
+
+  const libraryPaths = useMemo(
+    () => visibleMedia.map((item) => item.path),
+    [visibleMedia],
   );
 
   const folderCounts = useMemo(() => {
@@ -1057,11 +1063,27 @@ export function App() {
                 ref={settingsRef}
                 settings={settings}
                 excludedPaths={meta.excluded}
+                excludedPathSet={excludedSet}
                 tagOrder={meta.tagOrder}
+                libraryPaths={libraryPaths}
                 onChange={(patch) => void updateSettings(patch)}
                 onRestoreExcluded={(path) => {
                   void restoreExcluded(path);
                   showToast("Restored to library");
+                }}
+                onExcludePath={(path) => {
+                  void excludePath(path).then(() => {
+                    showToast("Excluded from library");
+                  });
+                }}
+                onExcludePaths={(paths) => {
+                  void excludePaths(paths).then(() => {
+                    showToast(
+                      paths.length === 1
+                        ? "Excluded 1 duplicate"
+                        : `Excluded ${paths.length} duplicates`,
+                    );
+                  });
                 }}
               />
 

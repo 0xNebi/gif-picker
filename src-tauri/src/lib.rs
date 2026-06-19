@@ -1,5 +1,8 @@
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
+use serde::Serialize;
+use sha2::{Digest, Sha256};
 use tauri::Manager;
 use tauri::path::BaseDirectory;
 use tauri_plugin_opener::OpenerExt;
@@ -229,6 +232,57 @@ fn copy_media_to_clipboard(path: String, as_gif: bool) -> Result<(), String> {
     copy_media_default(file_path, &path, &ext)
 }
 
+#[derive(Serialize, Clone)]
+struct DuplicateFileEntry {
+    path: String,
+    size: u64,
+}
+
+#[derive(Serialize, Clone)]
+struct DuplicateFileGroup {
+    hash: String,
+    files: Vec<DuplicateFileEntry>,
+}
+
+/// Groups library files by exact content hash (SHA-256).
+#[tauri::command]
+fn find_duplicate_files(paths: Vec<String>) -> Result<Vec<DuplicateFileGroup>, String> {
+    let mut by_hash: HashMap<String, Vec<DuplicateFileEntry>> = HashMap::new();
+
+    for path in paths {
+        let file_path = Path::new(&path);
+        if !file_path.is_file() {
+            continue;
+        }
+
+        let bytes = std::fs::read(file_path).map_err(|e| format!("Failed to read {path}: {e}"))?;
+        let size = bytes.len() as u64;
+        let mut hasher = Sha256::new();
+        hasher.update(&bytes);
+        let hash = format!("{:x}", hasher.finalize());
+
+        by_hash.entry(hash).or_default().push(DuplicateFileEntry { path, size });
+    }
+
+    let mut groups: Vec<DuplicateFileGroup> = by_hash
+        .into_iter()
+        .filter(|(_, files)| files.len() >= 2)
+        .map(|(hash, mut files)| {
+            files.sort_by(|a, b| a.path.cmp(&b.path));
+            DuplicateFileGroup { hash, files }
+        })
+        .collect();
+
+    groups.sort_by(|a, b| {
+        b.files
+            .len()
+            .cmp(&a.files.len())
+            .then_with(|| a.files[0].path.cmp(&b.files[0].path))
+    });
+
+    Ok(groups)
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let mut builder = tauri::Builder::default();
@@ -253,6 +307,7 @@ pub fn run() {
             copy_media_to_clipboard,
             migrate_legacy_app_data,
             get_app_data_dir,
+            find_duplicate_files,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
