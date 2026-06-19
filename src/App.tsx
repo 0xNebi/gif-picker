@@ -57,6 +57,7 @@ import {
 } from "./utils/extractFirstFrame";
 import {
   getMediaKind,
+  isGifPath,
   matchesMediaFilter,
   type MediaFile,
 } from "./utils/mediaTypes";
@@ -71,10 +72,6 @@ function getFolderName(path: string): string {
   return parts[parts.length - 1] || path;
 }
 
-function isGifPath(path: string): boolean {
-  return normalizePath(path).toLowerCase().endsWith(".gif");
-}
-
 function copyMediaToastMessage(
   path: string,
   kind: MediaFile["kind"],
@@ -83,9 +80,9 @@ function copyMediaToastMessage(
   if (copyAsGif && !isGifPath(path)) {
     return "Copied as .gif";
   }
-  return kind === "video"
-    ? "Video copied to clipboard"
-    : "Image copied to clipboard";
+  if (kind === "video") return "Video copied to clipboard";
+  if (kind === "gif") return "GIF copied to clipboard";
+  return "Image copied to clipboard";
 }
 
 function menuIcon(icon: React.ReactNode) {
@@ -516,7 +513,12 @@ export function App() {
   const buildMediaMenu = useCallback(
     (item: MediaFile): ContextMenuItem[] => {
       const isFavorite = favoriteSet.has(item.path);
-      const isVideo = item.kind === "video";
+      const copyLabel =
+        item.kind === "video"
+          ? "Copy video file"
+          : item.kind === "gif"
+            ? "Copy GIF"
+            : "Copy image";
       return [
         {
           id: "preview",
@@ -525,7 +527,7 @@ export function App() {
         },
         {
           id: "copy-media",
-          label: isVideo ? "Copy video file" : "Copy image",
+          label: copyLabel,
           icon: menuIcon(<Copy size={15} strokeWidth={1.5} />),
           onClick: () => {
             void copyMediaToClipboard(item.path, { asGif: settings.copyAsGif }).then(
@@ -1155,7 +1157,11 @@ export function App() {
                   );
                 }}
               >
-                {preview.kind === "video" ? "Copy video" : "Copy image"}
+                {preview.kind === "video"
+                  ? "Copy video"
+                  : preview.kind === "gif"
+                    ? "Copy GIF"
+                    : "Copy image"}
               </ActionButton>
               <ActionButton
                 icon={<Copy size={14} strokeWidth={1.5} />}

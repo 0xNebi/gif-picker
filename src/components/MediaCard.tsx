@@ -2,7 +2,7 @@ import { memo, useState } from "react";
 import { Star } from "lucide-react";
 
 import { MediaThumbnail } from "./MediaThumbnail";
-import type { MediaFile } from "../utils/mediaTypes";
+import { getMediaKindLabel, type MediaFile } from "../utils/mediaTypes";
 
 interface MediaCardProps {
   media: MediaFile;
@@ -74,9 +74,7 @@ export const MediaCard = memo(function MediaCard({
           <Star size={12} fill="currentColor" />
         </div>
       )}
-      {media.kind === "video" && (
-        <div className="gif-type-badge">VIDEO</div>
-      )}
+      <div className="gif-type-badge">{getMediaKindLabel(media.kind)}</div>
     </div>
   );
 });

@@ -1,4 +1,4 @@
-export type MediaKind = "image" | "video";
+export type MediaKind = "image" | "gif" | "video";
 
 export interface MediaFile {
   path: string;
@@ -7,7 +7,8 @@ export interface MediaFile {
   kind: MediaKind;
 }
 
-const IMAGE_EXTENSIONS = new Set([".gif", ".webp", ".png", ".jpg", ".jpeg", ".apng"]);
+const GIF_EXTENSIONS = new Set([".gif"]);
+const IMAGE_EXTENSIONS = new Set([".webp", ".png", ".jpg", ".jpeg", ".apng"]);
 const VIDEO_EXTENSIONS = new Set([".mp4", ".webm", ".mov", ".mkv", ".m4v", ".avi", ".gifv"]);
 
 export function getExtension(path: string): string {
@@ -18,8 +19,24 @@ export function getExtension(path: string): string {
 export function getMediaKind(path: string): MediaKind | null {
   const ext = getExtension(path);
   if (VIDEO_EXTENSIONS.has(ext)) return "video";
+  if (GIF_EXTENSIONS.has(ext)) return "gif";
   if (IMAGE_EXTENSIONS.has(ext)) return "image";
   return null;
+}
+
+export function getMediaKindLabel(kind: MediaKind): string {
+  switch (kind) {
+    case "video":
+      return "VIDEO";
+    case "gif":
+      return "GIF";
+    case "image":
+      return "IMAGE";
+  }
+}
+
+export function isGifPath(path: string): boolean {
+  return getMediaKind(path) === "gif";
 }
 
 export function isVideoPath(path: string): boolean {
@@ -31,6 +48,9 @@ export function matchesMediaFilter(
   includeVideos: boolean,
 ): boolean {
   const lower = name.toLowerCase();
+  for (const ext of GIF_EXTENSIONS) {
+    if (lower.endsWith(ext)) return true;
+  }
   for (const ext of IMAGE_EXTENSIONS) {
     if (lower.endsWith(ext)) return true;
   }
