@@ -265,6 +265,18 @@ export const SettingsView = forwardRef<SettingsViewHandle, SettingsViewProps>(
             </div>
 
             <section className="settings-section">
+              <h3 className="settings-section__title">Appearance</h3>
+              <Toggle
+                label="Dark mode"
+                hint="Switch between light and dark color schemes"
+                checked={settings.colorScheme === "dark"}
+                onChange={(dark) =>
+                  onChange({ colorScheme: dark ? "dark" : "light" })
+                }
+              />
+            </section>
+
+            <section className="settings-section">
               <h3 className="settings-section__title">Library</h3>
               <Toggle
                 label="Include video files"

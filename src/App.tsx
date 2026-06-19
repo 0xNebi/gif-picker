@@ -60,6 +60,7 @@ import {
   matchesMediaFilter,
   type MediaFile,
 } from "./utils/mediaTypes";
+import { applyColorScheme } from "./utils/theme";
 
 function normalizePath(p: string): string {
   return p.replace(/\\/g, "/");
@@ -185,6 +186,11 @@ export function App() {
     if (!hydrated) return;
     setThumbnailMemoryBudgetMb(settings.thumbnailCacheLimitMb);
   }, [hydrated, settings.thumbnailCacheLimitMb]);
+
+  useEffect(() => {
+    if (!hydrated) return;
+    applyColorScheme(settings.colorScheme);
+  }, [hydrated, settings.colorScheme]);
 
   useEffect(() => {
     const preventNativeMenu = (event: MouseEvent) => {

@@ -19,7 +19,11 @@ export interface WatchedFolder {
 export type SidebarView = "all" | "favorites" | "folder" | "tag";
 export type MainView = "library" | "settings";
 
+export type ColorScheme = "light" | "dark";
+
 export interface AppSettings {
+  /** App color scheme — light or dark mode. */
+  colorScheme: ColorScheme;
   includeVideos: boolean;
   gridCellMinWidth: number;
   retainLoadedThumbnails: boolean;
@@ -83,6 +87,7 @@ interface LibraryStore {
 }
 
 const DEFAULT_SETTINGS: AppSettings = {
+  colorScheme: "light",
   includeVideos: true,
   gridCellMinWidth: 140,
   retainLoadedThumbnails: true,
@@ -209,8 +214,13 @@ export const useLibraryStore = create<LibraryStore>((set, get) => ({
       }
     }
 
+    const mergedSettings = { ...DEFAULT_SETTINGS, ...settings };
+    if (mergedSettings.colorScheme !== "light" && mergedSettings.colorScheme !== "dark") {
+      mergedSettings.colorScheme = "light";
+    }
+
     set({
-      settings: { ...DEFAULT_SETTINGS, ...settings },
+      settings: mergedSettings,
       meta,
       folders,
       session: { ...DEFAULT_SESSION, ...session },

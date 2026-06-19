@@ -5,6 +5,16 @@
     <link rel="icon" type="image/svg+xml" href="/app-icon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>picker</title>
+    <script>
+      (function () {
+        try {
+          var scheme = localStorage.getItem("gif-picker-color-scheme");
+          if (scheme === "dark" || scheme === "light") {
+            document.documentElement.dataset.theme = scheme;
+          }
+        } catch (e) {}
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>
