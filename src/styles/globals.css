@@ -625,12 +625,41 @@ input, textarea, .search-input, .modal-path, .folder-path {
 
 .folder-path {
   overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
   font-family: var(--font-mono);
   font-size: 10px;
   color: var(--color-ink-tertiary);
   margin-top: 2px;
+  line-height: 1.35;
+}
+
+.folder-path__text {
+  display: inline-block;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  vertical-align: top;
+}
+
+.folder-path.is-scrolling .folder-path__text {
+  max-width: none;
+  text-overflow: clip;
+  animation: folder-path-scroll var(--folder-path-duration, 4s) ease-in-out infinite;
+}
+
+@keyframes folder-path-scroll {
+  0%,
+  12% {
+    transform: translateX(0);
+  }
+  45%,
+  55% {
+    transform: translateX(calc(-1 * var(--folder-path-scroll, 0px)));
+  }
+  88%,
+  100% {
+    transform: translateX(0);
+  }
 }
 
 .folder-remove {

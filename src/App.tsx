@@ -28,6 +28,7 @@ import { readDir } from "@tauri-apps/plugin-fs";
 import type { DirEntry } from "@tauri-apps/plugin-fs";
 
 import { ContextMenu, type ContextMenuItem } from "./components/ContextMenu";
+import { FolderPathLabel } from "./components/FolderPathLabel";
 import { MediaPreview } from "./components/MediaPreview";
 import {
   SettingsView,
@@ -740,7 +741,7 @@ export function App() {
               >
                 <div className="nav-item-body">
                   <div className="folder-name">{folder.name}</div>
-                  <div className="folder-path">{folder.path}</div>
+                  <FolderPathLabel path={folder.path} />
                 </div>
                 <div className="nav-item-actions">
                   <span className="nav-count">
