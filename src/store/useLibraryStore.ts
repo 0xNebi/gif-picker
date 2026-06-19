@@ -31,6 +31,8 @@ export interface AppSettings {
   copyAsGif: boolean;
   /** Show full folder path under each folder name in the sidebar. */
   showFolderPaths: boolean;
+  /** Tags that blur matching items in the grid. */
+  blurTags: string[];
 }
 
 export interface LibraryMeta {
@@ -69,7 +71,9 @@ interface LibraryStore {
   updateFolderName: (path: string, name: string) => Promise<void>;
   removeFolder: (path: string) => Promise<void>;
   toggleFavorite: (path: string) => Promise<void>;
+  createTag: (tag: string) => Promise<void>;
   addTag: (path: string, tag: string) => Promise<void>;
+  removeTagFromItem: (path: string, tag: string) => Promise<void>;
   deleteTag: (tag: string) => Promise<void>;
   reorderTags: (fromIndex: number, toIndex: number) => Promise<void>;
   excludePath: (path: string) => Promise<void>;
@@ -86,6 +90,7 @@ const DEFAULT_SETTINGS: AppSettings = {
   thumbnailCacheLimitMb: 128,
   copyAsGif: false,
   showFolderPaths: true,
+  blurTags: [],
 };
 
 const DEFAULT_META: LibraryMeta = {
@@ -274,6 +279,18 @@ export const useLibraryStore = create<LibraryStore>((set, get) => ({
     await writeJsonFile(LIBRARY_FILE, { ...meta, folders: get().folders });
   },
 
+  createTag: async (rawTag) => {
+    const tag = normalizeTag(rawTag);
+    if (!tag) return;
+
+    const meta = structuredClone(get().meta);
+    if (meta.tagOrder.includes(tag)) return;
+
+    meta.tagOrder.push(tag);
+    set({ meta });
+    await writeJsonFile(LIBRARY_FILE, { ...meta, folders: get().folders });
+  },
+
   addTag: async (path, rawTag) => {
     const tag = normalizeTag(rawTag);
     if (!tag) return;
@@ -285,6 +302,20 @@ export const useLibraryStore = create<LibraryStore>((set, get) => ({
     }
     if (!meta.tagOrder.includes(tag)) {
       meta.tagOrder.push(tag);
+    }
+    set({ meta });
+    await writeJsonFile(LIBRARY_FILE, { ...meta, folders: get().folders });
+  },
+
+  removeTagFromItem: async (path, rawTag) => {
+    const tag = normalizeTag(rawTag);
+    const meta = structuredClone(get().meta);
+    const existing = meta.tags[path] ?? [];
+    if (!existing.includes(tag)) return;
+
+    meta.tags[path] = existing.filter((value) => value !== tag);
+    if (meta.tags[path].length === 0) {
+      delete meta.tags[path];
     }
     set({ meta });
     await writeJsonFile(LIBRARY_FILE, { ...meta, folders: get().folders });
@@ -302,6 +333,13 @@ export const useLibraryStore = create<LibraryStore>((set, get) => ({
     meta.tagOrder = meta.tagOrder.filter((value) => value !== normalized);
     set({ meta });
     await writeJsonFile(LIBRARY_FILE, { ...meta, folders: get().folders });
+
+    const { settings } = get();
+    if (settings.blurTags.includes(normalized)) {
+      await get().updateSettings({
+        blurTags: settings.blurTags.filter((value) => value !== normalized),
+      });
+    }
   },
 
   reorderTags: async (fromIndex, toIndex) => {

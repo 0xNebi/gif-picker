@@ -21,6 +21,7 @@ import {
   Hash,
   Trash2,
   Pencil,
+  Plus,
 } from "lucide-react";
 import { invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
@@ -30,6 +31,7 @@ import type { DirEntry } from "@tauri-apps/plugin-fs";
 
 import { ContextMenu, type ContextMenuItem } from "./components/ContextMenu";
 import { FolderPathLabel } from "./components/FolderPathLabel";
+import { TagAssignDialog } from "./components/TagAssignDialog";
 import { MediaPreview } from "./components/MediaPreview";
 import {
   SettingsView,
@@ -143,7 +145,9 @@ export function App() {
     updateFolderName,
     removeFolder: persistRemoveFolder,
     toggleFavorite,
+    createTag,
     addTag,
+    removeTagFromItem,
     deleteTag,
     reorderTags,
     excludePath,
@@ -164,7 +168,8 @@ export function App() {
   } | null>(null);
   const [draggingTagIndex, setDraggingTagIndex] = useState<number | null>(null);
   const [toast, setToast] = useState<string | null>(null);
-  const [tagPromptPath, setTagPromptPath] = useState<string | null>(null);
+  const [tagAssignPath, setTagAssignPath] = useState<string | null>(null);
+  const [createTagOpen, setCreateTagOpen] = useState(false);
   const [keywordPromptPath, setKeywordPromptPath] = useState<string | null>(null);
   const [folderRenamePath, setFolderRenamePath] = useState<string | null>(null);
   const searchRef = useRef<HTMLInputElement>(null);
@@ -273,6 +278,7 @@ export function App() {
   }
 
   const favoriteSet = useMemo(() => new Set(meta.favorites), [meta.favorites]);
+  const blurTagSet = useMemo(() => new Set(settings.blurTags), [settings.blurTags]);
   const excludedSet = useMemo(() => new Set(meta.excluded), [meta.excluded]);
 
   const visibleMedia = useMemo(
@@ -355,8 +361,12 @@ export function App() {
       setContextMenu(null);
       return;
     }
-    if (tagPromptPath) {
-      setTagPromptPath(null);
+    if (tagAssignPath) {
+      setTagAssignPath(null);
+      return;
+    }
+    if (createTagOpen) {
+      setCreateTagOpen(false);
       return;
     }
     if (keywordPromptPath) {
@@ -380,7 +390,8 @@ export function App() {
     folderRenamePath,
     mainView,
     preview,
-    tagPromptPath,
+    tagAssignPath,
+    createTagOpen,
     keywordPromptPath,
     updateSession,
   ]);
@@ -415,7 +426,8 @@ export function App() {
       mainView !== "library" ||
       preview ||
       contextMenu ||
-      tagPromptPath ||
+      tagAssignPath ||
+      createTagOpen ||
       keywordPromptPath ||
       folderRenamePath
     ) {
@@ -437,7 +449,8 @@ export function App() {
     preview,
     settings.copyAsGif,
     showToast,
-    tagPromptPath,
+    tagAssignPath,
+    createTagOpen,
   ]);
 
   const excludeHoveredMedia = useCallback(() => {
@@ -445,7 +458,8 @@ export function App() {
       mainView !== "library" ||
       preview ||
       contextMenu ||
-      tagPromptPath ||
+      tagAssignPath ||
+      createTagOpen ||
       keywordPromptPath ||
       folderRenamePath
     ) {
@@ -468,7 +482,8 @@ export function App() {
     mainView,
     preview,
     showToast,
-    tagPromptPath,
+    tagAssignPath,
+    createTagOpen,
   ]);
 
   useKeyboardShortcuts({
@@ -532,7 +547,7 @@ export function App() {
           id: "tag",
           label: "Add tag…",
           icon: menuIcon(<Tag size={15} strokeWidth={1.5} />),
-          onClick: () => setTagPromptPath(item.path),
+          onClick: () => setTagAssignPath(item.path),
         },
         {
           id: "keyword",
@@ -642,6 +657,12 @@ export function App() {
             onClick: () => {
               void addFolder();
             },
+          },
+          {
+            id: "create-tag",
+            label: "Create tag",
+            icon: menuIcon(<Tag size={15} strokeWidth={1.5} />),
+            onClick: () => setCreateTagOpen(true),
           },
           {
             id: "refresh",
@@ -824,9 +845,16 @@ export function App() {
               </div>
             ))}
 
-            {meta.tagOrder.length > 0 && (
-              <div className="sidebar-section-label">Tags</div>
-            )}
+            <div className="sidebar-section-header">
+              <span className="sidebar-section-label">Tags</span>
+              <IconButton
+                size="sm"
+                label="Create tag"
+                onClick={() => setCreateTagOpen(true)}
+              >
+                <Plus size={14} strokeWidth={1.5} />
+              </IconButton>
+            </div>
 
             {meta.tagOrder.map((tag, index) => (
               <div
@@ -985,6 +1013,8 @@ export function App() {
                         staticThumbnails={settings.staticThumbnails}
                         previewOnHover={settings.previewOnHover}
                         favoritePaths={favoriteSet}
+                        blurTags={blurTagSet}
+                        tagsByPath={meta.tags}
                         onSelect={setPreview}
                         onContextMenu={(item, x, y) => {
                           setContextMenu({
@@ -1027,6 +1057,7 @@ export function App() {
                 ref={settingsRef}
                 settings={settings}
                 excludedPaths={meta.excluded}
+                tagOrder={meta.tagOrder}
                 onChange={(patch) => void updateSettings(patch)}
                 onRestoreExcluded={(path) => {
                   void restoreExcluded(path);
@@ -1148,16 +1179,43 @@ export function App() {
         />
       )}
 
+      <TagAssignDialog
+        open={tagAssignPath !== null}
+        mediaName={
+          tagAssignPath
+            ? media.find((item) => item.path === tagAssignPath)?.name
+            : undefined
+        }
+        allTags={meta.tagOrder}
+        assignedTags={
+          tagAssignPath ? (meta.tags[tagAssignPath] ?? []) : []
+        }
+        onToggleTag={(tag) => {
+          if (!tagAssignPath) return;
+          const assigned = meta.tags[tagAssignPath] ?? [];
+          if (assigned.includes(tag)) {
+            void removeTagFromItem(tagAssignPath, tag);
+          } else {
+            void addTag(tagAssignPath, tag);
+          }
+        }}
+        onCreateTag={(tag) => {
+          if (!tagAssignPath) return;
+          void addTag(tagAssignPath, tag);
+        }}
+        onClose={() => setTagAssignPath(null)}
+      />
+
       <InputDialog
-        open={tagPromptPath !== null}
-        title="Add tag"
+        open={createTagOpen}
+        title="Create tag"
         label="Tag name"
         placeholder="e.g. reactions, memes, work"
-        submitLabel="Add tag"
+        submitLabel="Create tag"
         onSubmit={(tag) => {
-          if (tagPromptPath) void addTag(tagPromptPath, tag);
+          void createTag(tag).then(() => showToast(`Created tag “${tag}”`));
         }}
-        onClose={() => setTagPromptPath(null)}
+        onClose={() => setCreateTagOpen(false)}
       />
 
       <InputDialog

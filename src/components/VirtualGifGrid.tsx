@@ -13,6 +13,8 @@ interface VirtualGifGridProps {
   staticThumbnails: boolean;
   previewOnHover: boolean;
   favoritePaths: Set<string>;
+  blurTags: Set<string>;
+  tagsByPath: Record<string, string[]>;
   onSelect: (gif: MediaFile) => void;
   onContextMenu: (gif: MediaFile, x: number, y: number) => void;
   onHoverChange?: (gif: MediaFile | null) => void;
@@ -27,6 +29,8 @@ export const VirtualGifGrid = memo(function VirtualGifGrid({
   staticThumbnails,
   previewOnHover,
   favoritePaths,
+  blurTags,
+  tagsByPath,
   onSelect,
   onContextMenu,
   onHoverChange,
@@ -55,6 +59,9 @@ export const VirtualGifGrid = memo(function VirtualGifGrid({
               staticThumbnails={staticThumbnails}
               previewOnHover={previewOnHover}
               isFavorite={favoritePaths.has(media.path)}
+              isBlurred={(tagsByPath[media.path] ?? []).some((tag) =>
+                blurTags.has(tag),
+              )}
               onSelect={onSelect}
               onContextMenu={onContextMenu}
               onHoverChange={onHoverChange}

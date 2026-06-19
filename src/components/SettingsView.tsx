@@ -5,7 +5,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { ChevronRight, X } from "lucide-react";
+import { ChevronRight, Eye, EyeOff, X } from "lucide-react";
 
 import { Slider } from "./ui/Slider";
 import { Toggle } from "./ui/Toggle";
@@ -13,7 +13,7 @@ import { Button } from "./ui/Button";
 import { IconButton } from "./ui/IconButton";
 import type { AppSettings } from "../store/useLibraryStore";
 
-type SettingsPanel = "excluded";
+type SettingsPanel = "excluded" | "tags";
 
 export type SettingsViewHandle = {
   closeDetailPanel: () => boolean;
@@ -22,6 +22,7 @@ export type SettingsViewHandle = {
 interface SettingsViewProps {
   settings: AppSettings;
   excludedPaths: string[];
+  tagOrder: string[];
   onChange: (patch: Partial<AppSettings>) => void;
   onRestoreExcluded: (path: string) => void;
 }
@@ -93,7 +94,7 @@ function DetailPanel({
 
 export const SettingsView = forwardRef<SettingsViewHandle, SettingsViewProps>(
   function SettingsView(
-    { settings, excludedPaths, onChange, onRestoreExcluded },
+    { settings, excludedPaths, tagOrder, onChange, onRestoreExcluded },
     ref,
   ) {
     const [activePanel, setActivePanel] = useState<SettingsPanel | null>(null);
@@ -227,6 +228,17 @@ export const SettingsView = forwardRef<SettingsViewHandle, SettingsViewProps>(
           <section className="settings-section">
             <h3 className="settings-section__title">Manage</h3>
             <SettingsNavRow
+              title="Tags"
+              hint="Blur items by tag and manage tag behavior"
+              count={tagOrder.length}
+              active={activePanel === "tags"}
+              onClick={() =>
+                setActivePanel((current) =>
+                  current === "tags" ? null : "tags",
+                )
+              }
+            />
+            <SettingsNavRow
               title="Excluded files"
               hint="Hidden from the grid but still on disk"
               count={excludedPaths.length}
@@ -245,6 +257,59 @@ export const SettingsView = forwardRef<SettingsViewHandle, SettingsViewProps>(
               activePanel ? " has-panel" : ""
             }`}
           >
+          {activePanel === "tags" && (
+            <DetailPanel
+              title="Tag settings"
+              description="Choose which tags blur items in the grid. Blurred items stay in your library and can still be previewed or copied."
+              onClose={closePanel}
+            >
+              {tagOrder.length === 0 ? (
+                <p className="settings-empty-note">
+                  No tags yet. Create one from the sidebar or when assigning tags to an item.
+                </p>
+              ) : (
+                <div className="tag-settings-grid">
+                  {tagOrder.map((tag) => {
+                    const blurEnabled = settings.blurTags.includes(tag);
+                    return (
+                      <div
+                        key={tag}
+                        className={`tag-settings-card${
+                          blurEnabled ? " is-blur-enabled" : ""
+                        }`}
+                      >
+                        <span className="tag-settings-card__name">#{tag}</span>
+                        <IconButton
+                          size="sm"
+                          className={`tag-settings-card__eye${
+                            blurEnabled ? " is-active" : ""
+                          }`}
+                          label={
+                            blurEnabled
+                              ? `Show items tagged “${tag}” in grid`
+                              : `Blur items tagged “${tag}” in grid`
+                          }
+                          onClick={() => {
+                            const blurTags = blurEnabled
+                              ? settings.blurTags.filter((value) => value !== tag)
+                              : [...settings.blurTags, tag];
+                            onChange({ blurTags });
+                          }}
+                        >
+                          {blurEnabled ? (
+                            <EyeOff size={16} strokeWidth={1.5} />
+                          ) : (
+                            <Eye size={16} strokeWidth={1.5} />
+                          )}
+                        </IconButton>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </DetailPanel>
+          )}
+
           {activePanel === "excluded" && (
             <DetailPanel
               title="Excluded files"

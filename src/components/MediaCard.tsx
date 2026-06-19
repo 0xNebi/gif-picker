@@ -13,6 +13,7 @@ interface MediaCardProps {
   staticThumbnails: boolean;
   previewOnHover: boolean;
   isFavorite: boolean;
+  isBlurred: boolean;
   onSelect: (media: MediaFile) => void;
   onContextMenu: (media: MediaFile, x: number, y: number) => void;
   onHoverChange?: (media: MediaFile | null) => void;
@@ -27,6 +28,7 @@ export const MediaCard = memo(function MediaCard({
   staticThumbnails,
   previewOnHover,
   isFavorite,
+  isBlurred,
   onSelect,
   onContextMenu,
   onHoverChange,
@@ -37,7 +39,7 @@ export const MediaCard = memo(function MediaCard({
 
   return (
     <div
-      className={`gif-card gif-card-virtual${hovered ? " is-hovered" : ""}`}
+      className={`gif-card gif-card-virtual${hovered ? " is-hovered" : ""}${isBlurred ? " is-blurred" : ""}`}
       style={{
         width,
         height,
