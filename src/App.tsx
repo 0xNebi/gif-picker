@@ -20,6 +20,7 @@ import {
   EyeOff,
   Hash,
   Trash2,
+  Pencil,
 } from "lucide-react";
 import { invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
@@ -45,6 +46,7 @@ import { useKeyboardShortcuts } from "./hooks/useKeyboardShortcuts";
 import {
   useLibraryStore,
   type SidebarView,
+  type WatchedFolder,
 } from "./store/useLibraryStore";
 import { copyMediaToClipboard, copyPathToClipboard } from "./utils/clipboard";
 import {
@@ -138,6 +140,7 @@ export function App() {
     updateSettings,
     updateSession,
     addFolder: persistAddFolder,
+    updateFolderName,
     removeFolder: persistRemoveFolder,
     toggleFavorite,
     addTag,
@@ -163,6 +166,7 @@ export function App() {
   const [toast, setToast] = useState<string | null>(null);
   const [tagPromptPath, setTagPromptPath] = useState<string | null>(null);
   const [keywordPromptPath, setKeywordPromptPath] = useState<string | null>(null);
+  const [folderRenamePath, setFolderRenamePath] = useState<string | null>(null);
   const searchRef = useRef<HTMLInputElement>(null);
   const settingsRef = useRef<SettingsViewHandle>(null);
   const hoveredMediaRef = useRef<MediaFile | null>(null);
@@ -359,6 +363,10 @@ export function App() {
       setKeywordPromptPath(null);
       return;
     }
+    if (folderRenamePath) {
+      setFolderRenamePath(null);
+      return;
+    }
     if (preview) {
       setPreview(null);
       return;
@@ -367,7 +375,15 @@ export function App() {
       if (settingsRef.current?.closeDetailPanel()) return;
       void updateSession({ mainView: "library" });
     }
-  }, [contextMenu, mainView, preview, tagPromptPath, keywordPromptPath, updateSession]);
+  }, [
+    contextMenu,
+    folderRenamePath,
+    mainView,
+    preview,
+    tagPromptPath,
+    keywordPromptPath,
+    updateSession,
+  ]);
 
   const handleHoverChange = useCallback((item: MediaFile | null) => {
     hoveredMediaRef.current = item;
@@ -400,7 +416,8 @@ export function App() {
       preview ||
       contextMenu ||
       tagPromptPath ||
-      keywordPromptPath
+      keywordPromptPath ||
+      folderRenamePath
     ) {
       return false;
     }
@@ -414,6 +431,7 @@ export function App() {
     return true;
   }, [
     contextMenu,
+    folderRenamePath,
     keywordPromptPath,
     mainView,
     preview,
@@ -428,7 +446,8 @@ export function App() {
       preview ||
       contextMenu ||
       tagPromptPath ||
-      keywordPromptPath
+      keywordPromptPath ||
+      folderRenamePath
     ) {
       return false;
     }
@@ -444,6 +463,7 @@ export function App() {
   }, [
     contextMenu,
     excludePath,
+    folderRenamePath,
     keywordPromptPath,
     mainView,
     preview,
@@ -556,6 +576,35 @@ export function App() {
       showToast,
       toggleFavorite,
     ],
+  );
+
+  const buildFolderMenu = useCallback(
+    (folder: WatchedFolder): ContextMenuItem[] => [
+      {
+        id: "folder-properties",
+        label: "Properties",
+        icon: menuIcon(<Pencil size={15} strokeWidth={1.5} />),
+        onClick: () => setFolderRenamePath(folder.path),
+      },
+      {
+        id: "reveal-folder",
+        label: "Reveal in Explorer",
+        icon: menuIcon(<ExternalLink size={15} strokeWidth={1.5} />),
+        onClick: () => {
+          void revealInExplorer(folder.path);
+        },
+      },
+      {
+        id: "remove-folder",
+        label: "Remove folder",
+        icon: menuIcon(<X size={15} strokeWidth={1.5} />),
+        danger: true,
+        onClick: () => {
+          void removeFolder(folder.path);
+        },
+      },
+    ],
+    [removeFolder],
   );
 
   const buildTagMenu = useCallback(
@@ -740,6 +789,15 @@ export function App() {
                     : ""
                 }`}
                 onClick={() => selectFolder(folder.path)}
+                onContextMenu={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  setContextMenu({
+                    x: e.clientX,
+                    y: e.clientY,
+                    items: buildFolderMenu(folder),
+                  });
+                }}
               >
                 <div className="nav-item-body">
                   <div className="folder-name">{folder.name}</div>
@@ -1112,6 +1170,25 @@ export function App() {
           if (keywordPromptPath) void addKeyword(keywordPromptPath, keyword);
         }}
         onClose={() => setKeywordPromptPath(null)}
+      />
+
+      <InputDialog
+        open={folderRenamePath !== null}
+        title="Folder properties"
+        description={folderRenamePath ?? undefined}
+        label="Display name"
+        placeholder="Folder name"
+        initialValue={
+          folders.find((folder) => folder.path === folderRenamePath)?.name ?? ""
+        }
+        submitLabel="Save"
+        onSubmit={(name) => {
+          if (!folderRenamePath) return;
+          void updateFolderName(folderRenamePath, name).then(() => {
+            showToast("Folder renamed");
+          });
+        }}
+        onClose={() => setFolderRenamePath(null)}
       />
 
       <Toast message={toast} onClear={() => setToast(null)} />

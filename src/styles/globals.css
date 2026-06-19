@@ -1347,6 +1347,15 @@ input, textarea, .search-input, .modal-path, .folder-path {
   font-weight: 600;
 }
 
+.input-dialog__description {
+  margin: 0 0 var(--space-4);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  line-height: 1.45;
+  color: var(--color-ink-tertiary);
+  word-break: break-all;
+}
+
 .input-dialog__label {
   display: block;
   margin-bottom: var(--space-2);

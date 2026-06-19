@@ -66,6 +66,7 @@ interface LibraryStore {
   updateSession: (patch: Partial<SessionState>) => Promise<void>;
   setFolders: (folders: WatchedFolder[]) => Promise<void>;
   addFolder: (folder: WatchedFolder) => Promise<void>;
+  updateFolderName: (path: string, name: string) => Promise<void>;
   removeFolder: (path: string) => Promise<void>;
   toggleFavorite: (path: string) => Promise<void>;
   addTag: (path: string, tag: string) => Promise<void>;
@@ -241,6 +242,17 @@ export const useLibraryStore = create<LibraryStore>((set, get) => ({
     const folders = [...get().folders];
     if (folders.some((f) => f.path === normalized.path)) return;
     folders.push(normalized);
+    await get().setFolders(folders);
+  },
+
+  updateFolderName: async (path, name) => {
+    const trimmed = name.trim();
+    if (!trimmed) return;
+
+    const norm = normalizeFolderPath(path);
+    const folders = get().folders.map((folder) =>
+      folder.path === norm ? { ...folder, name: trimmed } : folder,
+    );
     await get().setFolders(folders);
   },
 

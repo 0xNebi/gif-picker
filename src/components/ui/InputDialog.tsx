@@ -8,6 +8,8 @@ interface InputDialogProps {
   title: string;
   label: string;
   placeholder?: string;
+  initialValue?: string;
+  description?: string;
   submitLabel?: string;
   onSubmit: (value: string) => void;
   onClose: () => void;
@@ -18,6 +20,8 @@ export function InputDialog({
   title,
   label,
   placeholder = "",
+  initialValue = "",
+  description,
   submitLabel = "Save",
   onSubmit,
   onClose,
@@ -31,9 +35,13 @@ export function InputDialog({
       setValue("");
       return;
     }
-    const timer = window.setTimeout(() => inputRef.current?.focus(), 0);
+    setValue(initialValue);
+    const timer = window.setTimeout(() => {
+      inputRef.current?.focus();
+      inputRef.current?.select();
+    }, 0);
     return () => window.clearTimeout(timer);
-  }, [open]);
+  }, [open, initialValue]);
 
   useEffect(() => {
     if (!open) return;
@@ -78,6 +86,8 @@ export function InputDialog({
             </svg>
           </IconButton>
         </div>
+
+        {description && <p className="input-dialog__description">{description}</p>}
 
         <label className="input-dialog__label" htmlFor={inputId}>
           {label}
