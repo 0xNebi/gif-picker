@@ -1,0 +1,68 @@
+import { useEffect, useState } from "react";
+import { convertFileSrc } from "@tauri-apps/api/core";
+import { readFile } from "@tauri-apps/plugin-fs";
+
+import { isVideoPath, mimeForPath } from "../utils/mediaTypes";
+
+interface MediaPreviewProps {
+  path: string;
+  alt: string;
+  className?: string;
+}
+
+export function MediaPreview({ path, alt, className }: MediaPreviewProps) {
+  const [src, setSrc] = useState(() => convertFileSrc(path));
+  const [triedFallback, setTriedFallback] = useState(false);
+  const isVideo = isVideoPath(path);
+
+  useEffect(() => {
+    setSrc(convertFileSrc(path));
+    setTriedFallback(false);
+  }, [path]);
+
+  useEffect(() => {
+    return () => {
+      if (src.startsWith("blob:")) {
+        URL.revokeObjectURL(src);
+      }
+    };
+  }, [src]);
+
+  const handleError = async () => {
+    if (triedFallback) return;
+    try {
+      const bytes = await readFile(path);
+      const blob = new Blob([bytes], { type: mimeForPath(path) });
+      const blobUrl = URL.createObjectURL(blob);
+      setSrc(blobUrl);
+      setTriedFallback(true);
+    } catch (err) {
+      console.error("[gif-picker] Preview fallback failed for", path, err);
+    }
+  };
+
+  if (isVideo) {
+    return (
+      <video
+        src={src}
+        className={className}
+        autoPlay
+        loop
+        muted
+        playsInline
+        controls
+        onError={handleError}
+      />
+    );
+  }
+
+  return (
+    <img
+      src={src}
+      alt={alt}
+      className={className}
+      decoding="async"
+      onError={handleError}
+    />
+  );
+}

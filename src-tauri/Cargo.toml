@@ -1,0 +1,36 @@
+[package]
+name = "gif-picker"
+version = "0.1.0"
+description = "Gif Picker — Local GIF library browser"
+authors = ["You"]
+edition = "2021"
+
+[lib]
+name = "gif_picker_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = ["protocol-asset"] }
+tauri-plugin-fs = "2"
+tauri-plugin-opener = "2"
+tauri-plugin-dialog = "2"
+arboard = "3"
+serde_json = "1"
+image = { version = "0.25", default-features = false, features = ["gif", "webp", "png", "jpeg"] }
+
+# Single instance is nice for a picker app
+[target.'cfg(any(target_os = "macos", target_os = "windows", target_os = "linux"))'.dependencies]
+tauri-plugin-single-instance = "2"
+
+[target.'cfg(target_os = "windows")'.dependencies]
+clipboard-win = "5.4"
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+strip = true
+panic = "abort"
