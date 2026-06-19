@@ -4,6 +4,8 @@ interface KeyboardShortcutHandlers {
   onFocusSearch?: () => void;
   /** Return true when the shortcut was handled (prevents default copy). */
   onCopy?: () => boolean;
+  /** Return true when the shortcut was handled (prevents default). */
+  onExclude?: () => boolean;
   onEscape?: () => void;
 }
 
@@ -30,6 +32,11 @@ export function useKeyboardShortcuts(handlers: KeyboardShortcutHandlers) {
         !isTyping &&
         handlers.onCopy?.()
       ) {
+        event.preventDefault();
+        return;
+      }
+
+      if (event.key === "Delete" && !isTyping && handlers.onExclude?.()) {
         event.preventDefault();
         return;
       }

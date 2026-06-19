@@ -421,9 +421,39 @@ export function App() {
     tagPromptPath,
   ]);
 
+  const excludeHoveredMedia = useCallback(() => {
+    if (
+      mainView !== "library" ||
+      preview ||
+      contextMenu ||
+      tagPromptPath ||
+      keywordPromptPath
+    ) {
+      return false;
+    }
+
+    const item = hoveredMediaRef.current;
+    if (!item) return false;
+
+    void excludePath(item.path).then(() => {
+      hoveredMediaRef.current = null;
+      showToast("Excluded from library");
+    });
+    return true;
+  }, [
+    contextMenu,
+    excludePath,
+    keywordPromptPath,
+    mainView,
+    preview,
+    showToast,
+    tagPromptPath,
+  ]);
+
   useKeyboardShortcuts({
     onFocusSearch: focusSearch,
     onCopy: copyHoveredMedia,
+    onExclude: excludeHoveredMedia,
     onEscape: handleEscape,
   });
 
