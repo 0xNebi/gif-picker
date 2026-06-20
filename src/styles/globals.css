@@ -822,6 +822,7 @@ input, textarea, .search-input, .modal-path, .folder-path {
 
 .content-pane {
   --settings-col-w: min(560px, 33.333vw);
+  --settings-col-gap: var(--space-8);
   flex: 1;
   display: flex;
   flex-direction: column;
@@ -1177,7 +1178,7 @@ input, textarea, .search-input, .modal-path, .folder-path {
   flex-direction: row;
   align-items: stretch;
   justify-content: flex-start;
-  gap: var(--space-8);
+  gap: 0;
   width: 100%;
   min-height: 0;
   padding: var(--space-6) var(--space-8);
@@ -1185,12 +1186,16 @@ input, textarea, .search-input, .modal-path, .folder-path {
   overflow: hidden;
 }
 
+.settings-layout__col {
+  align-self: stretch;
+  min-height: 0;
+}
+
 .settings-layout__col--main,
 .settings-layout__col--detail.has-panel {
   flex: 0 0 var(--settings-col-w);
   width: var(--settings-col-w);
   max-width: var(--settings-col-w);
-  min-height: 0;
   padding-left: var(--space-8);
   border-left: 1px solid var(--color-border);
   box-sizing: border-box;
@@ -1201,17 +1206,28 @@ input, textarea, .search-input, .modal-path, .folder-path {
   -ms-overflow-style: none;
 }
 
-.settings-layout__col--main::-webkit-scrollbar,
-.settings-layout__col--detail.has-panel::-webkit-scrollbar {
-  display: none;
-}
-
+/* Absorb the former column gap into each pane so scroll/hit area matches divider lines. */
 .settings-layout__col--main {
-  padding-right: var(--space-2);
+  flex-basis: calc(var(--settings-col-w) + var(--settings-col-gap));
+  width: calc(var(--settings-col-w) + var(--settings-col-gap));
+  max-width: calc(var(--settings-col-w) + var(--settings-col-gap));
+  padding-right: calc(var(--settings-col-gap) + var(--space-2));
 }
 
 .settings-layout__col--detail.has-panel {
   padding-right: var(--space-2);
+}
+
+.settings-layout--with-preview .settings-layout__col--detail.has-panel {
+  flex-basis: calc(var(--settings-col-w) + var(--settings-col-gap));
+  width: calc(var(--settings-col-w) + var(--settings-col-gap));
+  max-width: calc(var(--settings-col-w) + var(--settings-col-gap));
+  padding-right: calc(var(--settings-col-gap) + var(--space-2));
+}
+
+.settings-layout__col--main::-webkit-scrollbar,
+.settings-layout__col--detail.has-panel::-webkit-scrollbar {
+  display: none;
 }
 
 .settings-layout__col--detail:not(.has-panel) {
