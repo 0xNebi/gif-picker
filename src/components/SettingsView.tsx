@@ -7,8 +7,18 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { ChevronRight, Copy, Download, Eye, EyeOff, RefreshCw, X } from "lucide-react";
-
+import {
+  ChevronRight,
+  Copy,
+  Download,
+  Eye,
+  EyeOff,
+  File,
+  FolderOpen,
+  RefreshCw,
+  X,
+} from "lucide-react";
+import { ContextMenu, type ContextMenuItem } from "./ContextMenu";
 import { SettingsPreviewPane } from "./SettingsPreviewPane";
 import { Slider } from "./ui/Slider";
 import { Toggle } from "./ui/Toggle";
@@ -24,6 +34,12 @@ import {
   type DuplicateFileGroup,
   type DuplicateScanProgress,
 } from "../utils/duplicates";
+import {
+  copyNameToClipboard,
+  copyPathToClipboard,
+  fileNameFromPath,
+} from "../utils/clipboard";
+import { openContainingFolder, openFile } from "../utils/fileActions";
 
 type SettingsPanel = "excluded" | "tags" | "duplicates";
 
@@ -44,9 +60,45 @@ interface SettingsViewProps {
   onOpenDiscordImport: () => void;
 }
 
-function fileNameFromPath(path: string): string {
-  const parts = path.replace(/\\/g, "/").split("/");
-  return parts[parts.length - 1] || path;
+function menuIcon(icon: ReactNode): ReactNode {
+  return <span className="menu-icon">{icon}</span>;
+}
+
+function buildDuplicateFileMenuItems(path: string): ContextMenuItem[] {
+  return [
+    {
+      id: "open-file",
+      label: "Open file",
+      icon: menuIcon(<File size={15} strokeWidth={1.5} />),
+      onClick: () => {
+        void openFile(path);
+      },
+    },
+    {
+      id: "open-path",
+      label: "Open path",
+      icon: menuIcon(<FolderOpen size={15} strokeWidth={1.5} />),
+      onClick: () => {
+        void openContainingFolder(path);
+      },
+    },
+    {
+      id: "copy-path",
+      label: "Copy path",
+      icon: menuIcon(<Copy size={15} strokeWidth={1.5} />),
+      onClick: () => {
+        void copyPathToClipboard(path);
+      },
+    },
+    {
+      id: "copy-name",
+      label: "Copy name",
+      icon: menuIcon(<Copy size={15} strokeWidth={1.5} />),
+      onClick: () => {
+        void copyNameToClipboard(path);
+      },
+    },
+  ];
 }
 
 function pruneDuplicateGroups(
@@ -150,6 +202,11 @@ export const SettingsView = forwardRef<SettingsViewHandle, SettingsViewProps>(
     );
     const [duplicateScanProgress, setDuplicateScanProgress] =
       useState<DuplicateScanProgress | null>(null);
+    const [contextMenu, setContextMenu] = useState<{
+      x: number;
+      y: number;
+      items: ContextMenuItem[];
+    } | null>(null);
 
     const showPreviewColumn =
       activePanel === "excluded" || activePanel === "duplicates";
@@ -171,6 +228,7 @@ export const SettingsView = forwardRef<SettingsViewHandle, SettingsViewProps>(
     const closePanel = useCallback(() => {
       setActivePanel(null);
       setHoveredPreviewPath(null);
+      setContextMenu(null);
     }, []);
 
     useImperativeHandle(
@@ -616,6 +674,14 @@ export const SettingsView = forwardRef<SettingsViewHandle, SettingsViewProps>(
                                   current === file.path ? null : current,
                                 )
                               }
+                              onContextMenu={(event) => {
+                                event.preventDefault();
+                                setContextMenu({
+                                  x: event.clientX,
+                                  y: event.clientY,
+                                  items: buildDuplicateFileMenuItems(file.path),
+                                });
+                              }}
                             >
                               <div className="duplicate-file-row__info">
                                 <span className="duplicate-file-row__name">
@@ -660,6 +726,15 @@ export const SettingsView = forwardRef<SettingsViewHandle, SettingsViewProps>(
             </div>
           )}
         </div>
+
+        {contextMenu && (
+          <ContextMenu
+            x={contextMenu.x}
+            y={contextMenu.y}
+            items={contextMenu.items}
+            onClose={() => setContextMenu(null)}
+          />
+        )}
       </div>
     );
   },
