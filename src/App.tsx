@@ -22,6 +22,7 @@ import {
   Trash2,
   Pencil,
   Plus,
+  Download,
 } from "lucide-react";
 import { invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
@@ -30,6 +31,7 @@ import { readDir } from "@tauri-apps/plugin-fs";
 import type { DirEntry } from "@tauri-apps/plugin-fs";
 
 import { ContextMenu, type ContextMenuItem } from "./components/ContextMenu";
+import { DiscordImportDialog } from "./components/DiscordImportDialog";
 import { FolderPathLabel } from "./components/FolderPathLabel";
 import { TagAssignDialog } from "./components/TagAssignDialog";
 import { MediaPreview } from "./components/MediaPreview";
@@ -171,6 +173,7 @@ export function App() {
   const [createTagOpen, setCreateTagOpen] = useState(false);
   const [keywordPromptPath, setKeywordPromptPath] = useState<string | null>(null);
   const [folderRenamePath, setFolderRenamePath] = useState<string | null>(null);
+  const [discordImportOpen, setDiscordImportOpen] = useState(false);
   const searchRef = useRef<HTMLInputElement>(null);
   const settingsRef = useRef<SettingsViewHandle>(null);
   const hoveredMediaRef = useRef<MediaFile | null>(null);
@@ -394,6 +397,10 @@ export function App() {
       setFolderRenamePath(null);
       return;
     }
+    if (discordImportOpen) {
+      setDiscordImportOpen(false);
+      return;
+    }
     if (preview) {
       setPreview(null);
       return;
@@ -404,6 +411,7 @@ export function App() {
     }
   }, [
     contextMenu,
+    discordImportOpen,
     folderRenamePath,
     mainView,
     preview,
@@ -446,7 +454,8 @@ export function App() {
       tagAssignPath ||
       createTagOpen ||
       keywordPromptPath ||
-      folderRenamePath
+      folderRenamePath ||
+      discordImportOpen
     ) {
       return false;
     }
@@ -460,6 +469,7 @@ export function App() {
     return true;
   }, [
     contextMenu,
+    discordImportOpen,
     folderRenamePath,
     keywordPromptPath,
     mainView,
@@ -478,7 +488,8 @@ export function App() {
       tagAssignPath ||
       createTagOpen ||
       keywordPromptPath ||
-      folderRenamePath
+      folderRenamePath ||
+      discordImportOpen
     ) {
       return false;
     }
@@ -493,6 +504,7 @@ export function App() {
     return true;
   }, [
     contextMenu,
+    discordImportOpen,
     excludePath,
     folderRenamePath,
     keywordPromptPath,
@@ -517,6 +529,26 @@ export function App() {
   const goToLibrary = useCallback(() => {
     void updateSession({ mainView: "library" });
   }, [updateSession]);
+
+  const handleDiscordImportComplete = useCallback(
+    async (destDir: string) => {
+      const normalized = normalizePath(destDir);
+      if (!folders.some((folder) => folder.path === normalized)) {
+        await persistAddFolder({
+          path: normalized,
+          name: getFolderName(destDir),
+        });
+      }
+      await updateSession({
+        sidebarView: "folder",
+        selectedFolder: normalized,
+        selectedTag: null,
+        mainView: "library",
+      });
+      setStatus("Added Discord GIFs. Scanning...");
+    },
+    [folders, persistAddFolder, updateSession],
+  );
 
   const buildMediaMenu = useCallback(
     (item: MediaFile): ContextMenuItem[] => {
@@ -977,6 +1009,14 @@ export function App() {
                   <Button
                     variant="secondary"
                     size="md"
+                    icon={<Download size={15} strokeWidth={1.5} />}
+                    onClick={() => setDiscordImportOpen(true)}
+                  >
+                    Discord
+                  </Button>
+                  <Button
+                    variant="secondary"
+                    size="md"
                     icon={<FolderPlus size={15} strokeWidth={1.5} />}
                     onClick={() => void addFolder()}
                   >
@@ -1082,6 +1122,7 @@ export function App() {
                 excludedPathSet={excludedSet}
                 tagOrder={meta.tagOrder}
                 libraryPaths={libraryPaths}
+                onOpenDiscordImport={() => setDiscordImportOpen(true)}
                 onChange={(patch) => void updateSettings(patch)}
                 onRestoreExcluded={(path) => {
                   void restoreExcluded(path);
@@ -1289,6 +1330,13 @@ export function App() {
           });
         }}
         onClose={() => setFolderRenamePath(null)}
+      />
+
+      <DiscordImportDialog
+        open={discordImportOpen}
+        onClose={() => setDiscordImportOpen(false)}
+        onComplete={(destDir) => void handleDiscordImportComplete(destDir)}
+        showToast={showToast}
       />
 
       <Toast message={toast} onClear={() => setToast(null)} />

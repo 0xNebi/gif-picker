@@ -7,7 +7,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { ChevronRight, Copy, Eye, EyeOff, RefreshCw, X } from "lucide-react";
+import { ChevronRight, Copy, Download, Eye, EyeOff, RefreshCw, X } from "lucide-react";
 
 import { SettingsPreviewPane } from "./SettingsPreviewPane";
 import { Slider } from "./ui/Slider";
@@ -41,6 +41,7 @@ interface SettingsViewProps {
   onRestoreExcluded: (path: string) => void;
   onExcludePath: (path: string) => void;
   onExcludePaths: (paths: string[]) => void;
+  onOpenDiscordImport: () => void;
 }
 
 function fileNameFromPath(path: string): string {
@@ -132,6 +133,7 @@ export const SettingsView = forwardRef<SettingsViewHandle, SettingsViewProps>(
       onRestoreExcluded,
       onExcludePath,
       onExcludePaths,
+      onOpenDiscordImport,
     },
     ref,
   ) {
@@ -274,6 +276,22 @@ export const SettingsView = forwardRef<SettingsViewHandle, SettingsViewProps>(
                   onChange({ colorScheme: dark ? "dark" : "light" })
                 }
               />
+            </section>
+
+            <section className="settings-section">
+              <h3 className="settings-section__title">Discord</h3>
+              <p className="settings-section__note">
+                Export your Discord favorite GIFs from the browser, then download them
+                into a local folder and add it to your library.
+              </p>
+              <Button
+                variant="secondary"
+                size="md"
+                icon={<Download size={14} strokeWidth={1.5} />}
+                onClick={onOpenDiscordImport}
+              >
+                Import from Discord
+              </Button>
             </section>
 
             <section className="settings-section">

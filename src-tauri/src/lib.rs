@@ -115,6 +115,236 @@ async fn reveal_in_explorer(app: tauri::AppHandle, path: String) -> Result<(), S
         .map_err(|e| format!("Failed to open path: {e}"))
 }
 
+/// Opens a URL in the user's default browser.
+#[tauri::command]
+async fn open_url(app: tauri::AppHandle, url: String) -> Result<(), String> {
+    app.opener()
+        .open_url(url, None::<&str>)
+        .map_err(|e| format!("Failed to open URL: {e}"))
+}
+
+#[derive(Serialize, Clone)]
+struct DiscordDownloadProgress {
+    downloaded: usize,
+    skipped: usize,
+    failed: usize,
+    total: usize,
+    current_url: Option<String>,
+    current_file: Option<String>,
+}
+
+#[derive(Serialize)]
+struct DiscordDownloadResult {
+    downloaded: usize,
+    skipped: usize,
+    failed: usize,
+    dest_dir: String,
+    paths: Vec<String>,
+}
+
+fn sanitize_filename(name: &str) -> String {
+    let cleaned: String = name
+        .chars()
+        .map(|ch| match ch {
+            '/' | '\\' | ':' | '*' | '?' | '"' | '<' | '>' | '|' => '_',
+            _ => ch,
+        })
+        .collect();
+
+    let trimmed = cleaned.trim_matches('.').trim();
+    if trimmed.is_empty() {
+        "discord-gif".to_string()
+    } else {
+        trimmed.to_string()
+    }
+}
+
+fn filename_from_url(url: &str, index: usize) -> String {
+    let without_query = url.split('?').next().unwrap_or(url);
+    let segment = without_query
+        .rsplit('/')
+        .find(|part| !part.is_empty())
+        .unwrap_or("");
+
+    let decoded = segment
+        .replace("%20", " ")
+        .replace("%2F", "/")
+        .replace("%3A", ":");
+
+    let mut name = sanitize_filename(&decoded);
+    if name.is_empty() {
+        name = format!("discord-gif-{index:04}");
+    }
+
+    if !name.contains('.') {
+        name.push_str(".gif");
+    }
+
+    name
+}
+
+fn unique_dest_path(dest_dir: &Path, base_name: &str) -> PathBuf {
+    let mut candidate = dest_dir.join(base_name);
+    if !candidate.exists() {
+        return candidate;
+    }
+
+    let (stem, extension) = match base_name.rsplit_once('.') {
+        Some((stem, ext)) if !stem.is_empty() => (stem.to_string(), Some(ext.to_string())),
+        _ => (base_name.to_string(), None),
+    };
+
+    for suffix in 1..1000 {
+        let next_name = match &extension {
+            Some(ext) => format!("{stem}-{suffix}.{ext}"),
+            None => format!("{stem}-{suffix}"),
+        };
+        candidate = dest_dir.join(&next_name);
+        if !candidate.exists() {
+            return candidate;
+        }
+    }
+
+    dest_dir.join(format!("{stem}-dup"))
+}
+
+fn emit_discord_download_progress(app: &tauri::AppHandle, progress: DiscordDownloadProgress) {
+    let _ = app.emit("discord-download-progress", progress);
+}
+
+fn download_discord_gifs_blocking(
+    app: tauri::AppHandle,
+    urls: Vec<String>,
+    dest_dir: String,
+) -> Result<DiscordDownloadResult, String> {
+    let destination = PathBuf::from(&dest_dir);
+    std::fs::create_dir_all(&destination)
+        .map_err(|error| format!("Failed to create destination folder: {error}"))?;
+
+    let agent = ureq::AgentBuilder::new()
+        .timeout(std::time::Duration::from_secs(60))
+        .build();
+
+    let total = urls.len();
+    let mut downloaded = 0usize;
+    let mut skipped = 0usize;
+    let mut failed = 0usize;
+    let mut paths = Vec::new();
+
+    for (index, url) in urls.iter().enumerate() {
+        let trimmed = url.trim();
+        if trimmed.is_empty() {
+            skipped += 1;
+            continue;
+        }
+
+        let base_name = filename_from_url(trimmed, index + 1);
+        let dest_path = unique_dest_path(&destination, &base_name);
+        let dest_display = dest_path
+            .file_name()
+            .and_then(|value| value.to_str())
+            .map(|value| value.to_string());
+
+        emit_discord_download_progress(
+            &app,
+            DiscordDownloadProgress {
+                downloaded,
+                skipped,
+                failed,
+                total,
+                current_url: Some(trimmed.to_string()),
+                current_file: dest_display.clone(),
+            },
+        );
+
+        if dest_path.exists() {
+            skipped += 1;
+            if let Some(path) = dest_path.to_str() {
+                paths.push(path.to_string());
+            }
+            continue;
+        }
+
+        let response = match agent.get(trimmed).call() {
+            Ok(response) => response,
+            Err(error) => {
+                failed += 1;
+                eprintln!("[gif-picker] Discord GIF download failed for {trimmed}: {error}");
+                continue;
+            }
+        };
+
+        if !(200..300).contains(&response.status()) {
+            failed += 1;
+            eprintln!(
+                "[gif-picker] Discord GIF download failed for {trimmed}: HTTP {}",
+                response.status()
+            );
+            continue;
+        }
+
+        let mut reader = response.into_reader();
+        let mut file = match std::fs::File::create(&dest_path) {
+            Ok(file) => file,
+            Err(error) => {
+                failed += 1;
+                eprintln!(
+                    "[gif-picker] Failed to write {}: {error}",
+                    dest_path.display()
+                );
+                continue;
+            }
+        };
+
+        if let Err(error) = std::io::copy(&mut reader, &mut file) {
+            failed += 1;
+            let _ = std::fs::remove_file(&dest_path);
+            eprintln!(
+                "[gif-picker] Failed to save {}: {error}",
+                dest_path.display()
+            );
+            continue;
+        }
+
+        downloaded += 1;
+        if let Some(path) = dest_path.to_str() {
+            paths.push(path.to_string());
+        }
+    }
+
+    emit_discord_download_progress(
+        &app,
+        DiscordDownloadProgress {
+            downloaded,
+            skipped,
+            failed,
+            total,
+            current_url: None,
+            current_file: None,
+        },
+    );
+
+    Ok(DiscordDownloadResult {
+        downloaded,
+        skipped,
+        failed,
+        dest_dir,
+        paths,
+    })
+}
+
+/// Downloads Discord favorite GIF URLs into a local folder.
+#[tauri::command]
+async fn download_discord_gifs(
+    app: tauri::AppHandle,
+    urls: Vec<String>,
+    dest_dir: String,
+) -> Result<DiscordDownloadResult, String> {
+    tauri::async_runtime::spawn_blocking(move || download_discord_gifs_blocking(app, urls, dest_dir))
+        .await
+        .map_err(|error| format!("Discord download task failed: {error}"))?
+}
+
 #[tauri::command]
 fn copy_text_to_clipboard(text: String) -> Result<(), String> {
     let mut clipboard = arboard::Clipboard::new().map_err(|e| e.to_string())?;
@@ -436,11 +666,13 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .invoke_handler(tauri::generate_handler![
             reveal_in_explorer,
+            open_url,
             copy_text_to_clipboard,
             copy_media_to_clipboard,
             migrate_legacy_app_data,
             get_app_data_dir,
             find_duplicate_files,
+            download_discord_gifs,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
