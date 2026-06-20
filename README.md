@@ -4,6 +4,8 @@ Local-first desktop media picker built with **Tauri 2** and **React 19**.
 
 Browse, search, tag, and copy GIFs, images, and videos from folders on your machine. Library metadata stays on your computer — network access is only used when you explicitly import from Discord.
 
+![Gif Picker preview](assets/app_preview.png)
+
 ## Features
 
 - Watch multiple local folders (GIF, WebP, PNG, JPG, and optional video formats)
@@ -40,6 +42,7 @@ Windows installers are written to `src-tauri/target/release/bundle/`.
 
 ```
 gif-picker/
+├── assets/              # README images
 ├── public/              # Static web assets (favicon)
 ├── src/                 # React frontend
 ├── src-tauri/           # Rust / Tauri backend
