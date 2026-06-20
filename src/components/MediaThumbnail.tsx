@@ -6,21 +6,23 @@ import {
   getCachedThumbnail,
   requestThumbnail,
 } from "../utils/extractFirstFrame";
-import { isVideoPath } from "../utils/mediaTypes";
+import { isVideoPath, type MediaKind } from "../utils/mediaTypes";
 
 interface MediaThumbnailProps {
   path: string;
   alt: string;
   staticOnly: boolean;
+  kind?: MediaKind;
 }
 
 export const MediaThumbnail = memo(function MediaThumbnail({
   path,
   alt,
   staticOnly,
+  kind,
 }: MediaThumbnailProps) {
   const assetUrl = convertFileSrc(path);
-  const isVideo = isVideoPath(path);
+  const isVideo = kind === "video" || isVideoPath(path);
   const [src, setSrc] = useState(() => getCachedThumbnail(path) ?? null);
   const [failed, setFailed] = useState(false);
 

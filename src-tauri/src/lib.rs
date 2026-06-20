@@ -142,6 +142,111 @@ struct DiscordDownloadResult {
     paths: Vec<String>,
 }
 
+fn sniff_media_extension(header: &[u8]) -> Option<&'static str> {
+    if header.len() >= 6
+        && (header.starts_with(b"GIF87a") || header.starts_with(b"GIF89a"))
+    {
+        return Some("gif");
+    }
+    if header.len() >= 4 && header.starts_with(b"\x89PNG") {
+        return Some("png");
+    }
+    if header.len() >= 12 && header.starts_with(b"RIFF") && &header[8..12] == b"WEBP" {
+        return Some("webp");
+    }
+    if header.len() >= 3 && header.starts_with(&[0xFF, 0xD8, 0xFF]) {
+        return Some("jpg");
+    }
+    if header.len() >= 4 && header.starts_with(&[0x1A, 0x45, 0xDF, 0xA3]) {
+        return Some("webm");
+    }
+    if header.len() >= 12 && &header[4..8] == b"ftyp" {
+        return Some("mp4");
+    }
+    None
+}
+
+fn sniff_media_kind_label(header: &[u8]) -> Option<&'static str> {
+    match sniff_media_extension(header)? {
+        "gif" => Some("gif"),
+        "mp4" | "webm" | "mov" | "mkv" | "m4v" | "avi" | "gifv" => Some("video"),
+        _ => Some("image"),
+    }
+}
+
+fn extension_from_content_type(content_type: &str) -> Option<&'static str> {
+    let content_type = content_type.split(';').next()?.trim().to_ascii_lowercase();
+    match content_type.as_str() {
+        "image/gif" => Some("gif"),
+        "image/png" => Some("png"),
+        "image/jpeg" | "image/jpg" => Some("jpg"),
+        "image/webp" => Some("webp"),
+        "video/mp4" => Some("mp4"),
+        "video/webm" => Some("webm"),
+        "video/quicktime" => Some("mov"),
+        _ => None,
+    }
+}
+
+fn read_file_header(path: &Path) -> Result<[u8; 16], String> {
+    let mut file = std::fs::File::open(path)
+        .map_err(|error| format!("Failed to open {}: {error}", path.display()))?;
+    let mut header = [0u8; 16];
+    let _read = file
+        .read(&mut header)
+        .map_err(|error| format!("Failed to read {}: {error}", path.display()))?;
+    Ok(header)
+}
+
+fn correct_media_extension(path: &Path, preferred_extension: Option<&str>) -> Result<PathBuf, String> {
+    let header = read_file_header(path)?;
+    let detected = sniff_media_extension(&header).or(preferred_extension);
+
+    let Some(detected) = detected else {
+        return Ok(path.to_path_buf());
+    };
+
+    let current_ext = path
+        .extension()
+        .and_then(|value| value.to_str())
+        .unwrap_or("")
+        .to_ascii_lowercase();
+
+    if current_ext == detected {
+        return Ok(path.to_path_buf());
+    }
+
+    let parent = path
+        .parent()
+        .ok_or_else(|| format!("Invalid media path: {}", path.display()))?;
+    let stem = path
+        .file_stem()
+        .and_then(|value| value.to_str())
+        .unwrap_or("discord-media");
+    let corrected_name = format!("{stem}.{detected}");
+    let corrected_path = unique_dest_path(parent, &corrected_name);
+
+    if corrected_path != path {
+        std::fs::rename(path, &corrected_path).map_err(|error| {
+            format!(
+                "Failed to rename {} to {}: {error}",
+                path.display(),
+                corrected_path.display()
+            )
+        })?;
+    }
+
+    Ok(corrected_path)
+}
+
+/// Detects media kind from file header bytes (used for mislabeled Discord downloads).
+#[tauri::command]
+fn sniff_media_kind(path: String) -> Result<Option<String>, String> {
+    let file_path = PathBuf::from(&path);
+    let header = read_file_header(&file_path)?;
+    Ok(sniff_media_kind_label(&header).map(str::to_string))
+}
+
 fn sanitize_filename(name: &str) -> String {
     let cleaned: String = name
         .chars()
@@ -259,7 +364,17 @@ fn download_discord_gifs_blocking(
 
         if dest_path.exists() {
             skipped += 1;
-            if let Some(path) = dest_path.to_str() {
+            let final_path = match correct_media_extension(&dest_path, None) {
+                Ok(path) => path,
+                Err(error) => {
+                    eprintln!(
+                        "[gif-picker] Failed to correct media extension for {}: {error}",
+                        dest_path.display()
+                    );
+                    dest_path
+                }
+            };
+            if let Some(path) = final_path.to_str() {
                 paths.push(path.to_string());
             }
             continue;
@@ -282,6 +397,12 @@ fn download_discord_gifs_blocking(
             );
             continue;
         }
+
+        let content_type = response
+            .header("Content-Type")
+            .unwrap_or_default()
+            .to_string();
+        let preferred_extension = extension_from_content_type(&content_type);
 
         let mut reader = response.into_reader();
         let mut file = match std::fs::File::create(&dest_path) {
@@ -306,8 +427,19 @@ fn download_discord_gifs_blocking(
             continue;
         }
 
+        let final_path = match correct_media_extension(&dest_path, preferred_extension) {
+            Ok(path) => path,
+            Err(error) => {
+                eprintln!(
+                    "[gif-picker] Failed to correct media extension for {}: {error}",
+                    dest_path.display()
+                );
+                dest_path
+            }
+        };
+
         downloaded += 1;
-        if let Some(path) = dest_path.to_str() {
+        if let Some(path) = final_path.to_str() {
             paths.push(path.to_string());
         }
     }
@@ -673,6 +805,7 @@ pub fn run() {
             get_app_data_dir,
             find_duplicate_files,
             download_discord_gifs,
+            sniff_media_kind,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

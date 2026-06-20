@@ -1,3 +1,5 @@
+import { invoke } from "@tauri-apps/api/core";
+
 export type MediaKind = "image" | "gif" | "video";
 
 export interface MediaFile {
@@ -22,6 +24,25 @@ export function getMediaKind(path: string): MediaKind | null {
   if (GIF_EXTENSIONS.has(ext)) return "gif";
   if (IMAGE_EXTENSIONS.has(ext)) return "image";
   return null;
+}
+
+/** Resolves media kind from extension, sniffing .gif files that may be mislabeled videos. */
+export async function resolveMediaKind(path: string): Promise<MediaKind | null> {
+  const kind = getMediaKind(path);
+  if (!kind || getExtension(path) !== ".gif") {
+    return kind;
+  }
+
+  try {
+    const sniffed = await invoke<string | null>("sniff_media_kind", { path });
+    if (sniffed === "video") return "video";
+    if (sniffed === "image") return "image";
+    if (sniffed === "gif") return "gif";
+  } catch (error) {
+    console.warn("[gif-picker] media sniff failed for", path, error);
+  }
+
+  return kind;
 }
 
 export function getMediaKindLabel(kind: MediaKind): string {

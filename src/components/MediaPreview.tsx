@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { readFile } from "@tauri-apps/plugin-fs";
 
-import { isVideoPath, mimeForPath } from "../utils/mediaTypes";
+import { isVideoPath, mimeForPath, resolveMediaKind } from "../utils/mediaTypes";
 
 interface MediaPreviewProps {
   path: string;
@@ -13,11 +13,26 @@ interface MediaPreviewProps {
 export function MediaPreview({ path, alt, className }: MediaPreviewProps) {
   const [src, setSrc] = useState(() => convertFileSrc(path));
   const [triedFallback, setTriedFallback] = useState(false);
-  const isVideo = isVideoPath(path);
+  const [isVideo, setIsVideo] = useState(() => isVideoPath(path));
 
   useEffect(() => {
     setSrc(convertFileSrc(path));
     setTriedFallback(false);
+    if (isVideoPath(path)) {
+      setIsVideo(true);
+      return;
+    }
+
+    let cancelled = false;
+    void resolveMediaKind(path).then((kind) => {
+      if (!cancelled) {
+        setIsVideo(kind === "video");
+      }
+    });
+
+    return () => {
+      cancelled = true;
+    };
   }, [path]);
 
   useEffect(() => {

@@ -68,6 +68,7 @@ export const MediaCard = memo(function MediaCard({
         path={media.path}
         alt={media.name}
         staticOnly={staticOnly}
+        kind={media.kind}
       />
       {isFavorite && (
         <div className="gif-favorite-badge" aria-label="Favorite">
