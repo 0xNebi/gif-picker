@@ -486,6 +486,10 @@ input, textarea, .search-input, .modal-path, .folder-path {
   display: block;
 }
 
+[data-theme="dark"] .app-mark__icon {
+  filter: brightness(0) invert(1);
+}
+
 .app-name {
   font-size: 13px;
   font-weight: 500;
