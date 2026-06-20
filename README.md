@@ -2,17 +2,17 @@
 
 Local-first desktop media picker built with **Tauri 2** and **React 19**.
 
-Browse, search, tag, and copy GIFs and videos from folders on your machine. All library data stays on your computer — no network calls.
+Browse, search, tag, and copy GIFs, images, and videos from folders on your machine. Library metadata stays on your computer — network access is only used when you explicitly import from Discord.
 
 ## Features
 
-- Watch multiple local folders (GIF, WebP, PNG, and optional video formats)
-- Virtual scrolling grid with static first-frame thumbnails
-- Search by filename, tag, or keyword
-- Favorites, tags, per-file keywords, and excluded files
+- Watch multiple local folders (GIF, WebP, PNG, JPG, and optional video formats)
+- Virtual scrolling grid with thumbnails, hover preview, and preview modal
+- Search by filename, tag, or keyword; favorites and tags
 - Copy to clipboard (optional always-copy-as-.gif)
-- Hover preview, full preview modal, and keyboard shortcuts
-- Custom frameless window with native clipboard integration
+- Light/dark mode, configurable grid and thumbnail memory
+- Settings for excluded files, duplicate finder, blur tags, and Discord import
+- Keyboard shortcuts (`Ctrl+F` search, `Ctrl+C` copy, `Delete` exclude, `Esc` close)
 
 ## Requirements
 
