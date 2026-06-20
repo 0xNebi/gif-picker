@@ -24,7 +24,9 @@ import { Slider } from "./ui/Slider";
 import { Toggle } from "./ui/Toggle";
 import { Button } from "./ui/Button";
 import { IconButton } from "./ui/IconButton";
-import type { AppSettings } from "../store/useLibraryStore";
+import { OptionList } from "./ui/OptionList";
+import { Select, type SelectOption } from "./ui/Select";
+import type { AppSettings, WatchedFolder } from "../store/useLibraryStore";
 import {
   duplicateScanProgressLabel,
   duplicateScanProgressPercent,
@@ -40,6 +42,7 @@ import {
   fileNameFromPath,
 } from "../utils/clipboard";
 import { openContainingFolder, openFile } from "../utils/fileActions";
+import { groupPathsByFolder, normalizePath } from "../utils/paths";
 
 type SettingsPanel = "excluded" | "tags" | "duplicates";
 
@@ -49,12 +52,14 @@ export type SettingsViewHandle = {
 
 interface SettingsViewProps {
   settings: AppSettings;
+  folders: WatchedFolder[];
   excludedPaths: string[];
   excludedPathSet: Set<string>;
   tagOrder: string[];
-  libraryPaths: string[];
+  libraryPathsByFolder: Map<string, string[]>;
   onChange: (patch: Partial<AppSettings>) => void;
   onRestoreExcluded: (path: string) => void;
+  onRestoreExcludedPaths: (paths: string[]) => void;
   onExcludePath: (path: string) => void;
   onExcludePaths: (paths: string[]) => void;
   onOpenDiscordImport: () => void;
@@ -177,12 +182,14 @@ export const SettingsView = forwardRef<SettingsViewHandle, SettingsViewProps>(
   function SettingsView(
     {
       settings,
+      folders,
       excludedPaths,
       excludedPathSet,
       tagOrder,
-      libraryPaths,
+      libraryPathsByFolder,
       onChange,
       onRestoreExcluded,
+      onRestoreExcludedPaths,
       onExcludePath,
       onExcludePaths,
       onOpenDiscordImport,
@@ -207,6 +214,11 @@ export const SettingsView = forwardRef<SettingsViewHandle, SettingsViewProps>(
       y: number;
       items: ContextMenuItem[];
     } | null>(null);
+    const [excludedFolderFilter, setExcludedFolderFilter] = useState("all");
+    const [restoreFolderSelection, setRestoreFolderSelection] = useState("");
+    const [duplicateScanFolders, setDuplicateScanFolders] = useState<
+      Set<string>
+    >(() => new Set(folders.map((folder) => normalizePath(folder.path))));
 
     const showPreviewColumn =
       activePanel === "excluded" || activePanel === "duplicates";
@@ -223,6 +235,96 @@ export const SettingsView = forwardRef<SettingsViewHandle, SettingsViewProps>(
           0,
         ),
       [visibleDuplicateGroups],
+    );
+
+    const excludedByFolder = useMemo(
+      () => groupPathsByFolder(excludedPaths, folders),
+      [excludedPaths, folders],
+    );
+
+    const excludedFolderOptions = useMemo(
+      () =>
+        folders
+          .map((folder) => {
+            const folderPath = normalizePath(folder.path);
+            return {
+              folderPath,
+              name: folder.name,
+              count: excludedByFolder.get(folderPath)?.length ?? 0,
+            };
+          })
+          .filter((option) => option.count > 0),
+      [excludedByFolder, folders],
+    );
+
+    const visibleExcludedPaths = useMemo(() => {
+      if (excludedFolderFilter === "all") {
+        return excludedPaths;
+      }
+      return (
+        excludedByFolder.get(excludedFolderFilter) ?? []
+      );
+    }, [excludedByFolder, excludedFolderFilter, excludedPaths]);
+
+    const duplicateScanPaths = useMemo(() => {
+      const paths: string[] = [];
+      for (const folderPath of duplicateScanFolders) {
+        const folderPaths = libraryPathsByFolder.get(folderPath);
+        if (folderPaths) {
+          paths.push(...folderPaths);
+        }
+      }
+      return paths;
+    }, [duplicateScanFolders, libraryPathsByFolder]);
+
+    const duplicateFolderOptions = useMemo(
+      () =>
+        folders.map((folder) => {
+          const folderPath = normalizePath(folder.path);
+          return {
+            folderPath,
+            name: folder.name,
+            count: libraryPathsByFolder.get(folderPath)?.length ?? 0,
+          };
+        }),
+      [folders, libraryPathsByFolder],
+    );
+
+    const duplicateScanListItems = useMemo(
+      () =>
+        duplicateFolderOptions.map((option) => ({
+          id: option.folderPath,
+          label: option.name,
+          count: option.count,
+          checked: duplicateScanFolders.has(option.folderPath),
+        })),
+      [duplicateFolderOptions, duplicateScanFolders],
+    );
+
+    const restoreFolderSelectOptions = useMemo<SelectOption[]>(
+      () =>
+        excludedFolderOptions.map((option) => ({
+          value: option.folderPath,
+          label: option.name,
+          count: option.count,
+        })),
+      [excludedFolderOptions],
+    );
+
+    const excludedFilterOptions = useMemo<SelectOption[]>(
+      () => [
+        {
+          value: "all",
+          label: "All folders",
+          count: excludedPaths.length,
+        },
+        ...excludedFolderOptions.map((option) => ({
+          value: option.folderPath,
+          label: option.name,
+          count: option.count,
+        })),
+      ],
+      [excludedFolderOptions, excludedPaths.length],
     );
 
     const closePanel = useCallback(() => {
@@ -260,6 +362,31 @@ export const SettingsView = forwardRef<SettingsViewHandle, SettingsViewProps>(
     }, [activePanel]);
 
     useEffect(() => {
+      setDuplicateScanFolders(
+        new Set(folders.map((folder) => normalizePath(folder.path))),
+      );
+    }, [folders]);
+
+    useEffect(() => {
+      if (
+        restoreFolderSelection &&
+        !excludedFolderOptions.some(
+          (option) => option.folderPath === restoreFolderSelection,
+        )
+      ) {
+        setRestoreFolderSelection("");
+      }
+      if (
+        excludedFolderFilter !== "all" &&
+        !excludedFolderOptions.some(
+          (option) => option.folderPath === excludedFolderFilter,
+        )
+      ) {
+        setExcludedFolderFilter("all");
+      }
+    }, [excludedFolderFilter, excludedFolderOptions, restoreFolderSelection]);
+
+    useEffect(() => {
       if (hoveredPreviewPath && excludedPathSet.has(hoveredPreviewPath)) {
         if (activePanel !== "excluded") {
           setHoveredPreviewPath(null);
@@ -268,9 +395,15 @@ export const SettingsView = forwardRef<SettingsViewHandle, SettingsViewProps>(
     }, [activePanel, excludedPathSet, hoveredPreviewPath]);
 
     const scanDuplicates = useCallback(async () => {
-      if (libraryPaths.length === 0) {
+      if (duplicateScanFolders.size === 0) {
         setDuplicateGroups([]);
-        setDuplicateScanError("No media files in your library to scan.");
+        setDuplicateScanError("Select at least one folder to scan.");
+        return;
+      }
+
+      if (duplicateScanPaths.length === 0) {
+        setDuplicateGroups([]);
+        setDuplicateScanError("No media files in the selected folders to scan.");
         return;
       }
 
@@ -279,11 +412,11 @@ export const SettingsView = forwardRef<SettingsViewHandle, SettingsViewProps>(
       setDuplicateScanProgress({
         phase: "metadata",
         scanned: 0,
-        total: libraryPaths.length,
+        total: duplicateScanPaths.length,
       });
 
       try {
-        const groups = await findDuplicateFiles(libraryPaths, (progress) => {
+        const groups = await findDuplicateFiles(duplicateScanPaths, (progress) => {
           setDuplicateScanProgress(progress);
         });
         setDuplicateGroups(groups);
@@ -298,7 +431,36 @@ export const SettingsView = forwardRef<SettingsViewHandle, SettingsViewProps>(
         setIsScanningDuplicates(false);
         setDuplicateScanProgress(null);
       }
-    }, [libraryPaths]);
+    }, [duplicateScanFolders.size, duplicateScanPaths]);
+
+    const toggleDuplicateScanFolder = useCallback(
+      (folderPath: string, checked: boolean) => {
+        setDuplicateScanFolders((current) => {
+          const next = new Set(current);
+          if (checked) {
+            next.add(folderPath);
+          } else {
+            next.delete(folderPath);
+          }
+          return next;
+        });
+      },
+      [],
+    );
+
+    const restoreAllExcluded = useCallback(() => {
+      if (excludedPaths.length === 0) return;
+      onRestoreExcludedPaths(excludedPaths);
+      setHoveredPreviewPath(null);
+    }, [excludedPaths, onRestoreExcludedPaths]);
+
+    const restoreExcludedFromFolder = useCallback(() => {
+      if (!restoreFolderSelection) return;
+      const paths = excludedByFolder.get(restoreFolderSelection) ?? [];
+      if (paths.length === 0) return;
+      onRestoreExcludedPaths(paths);
+      setHoveredPreviewPath(null);
+    }, [excludedByFolder, onRestoreExcludedPaths, restoreFolderSelection]);
 
     const excludeAllDuplicates = useCallback(() => {
       const paths = pathsToExcludeFromDuplicateGroups(visibleDuplicateGroups);
@@ -542,14 +704,57 @@ export const SettingsView = forwardRef<SettingsViewHandle, SettingsViewProps>(
             {activePanel === "excluded" && (
               <DetailPanel
                 title="Excluded files"
-                description="Hover a file to preview it. Restore any item you excluded by mistake."
+                description="Hover a file to preview it. Restore items individually, by folder, or all at once."
                 onClose={closePanel}
               >
                 {excludedPaths.length === 0 ? (
                   <p className="settings-empty-note">No excluded files.</p>
                 ) : (
-                  <ul className="excluded-list">
-                    {excludedPaths.map((path) => (
+                  <>
+                    <div className="settings-action-bar">
+                      <Button
+                        variant="primary"
+                        size="sm"
+                        onClick={restoreAllExcluded}
+                      >
+                        Restore all
+                      </Button>
+                      {excludedFolderOptions.length > 0 && (
+                        <div className="settings-action-bar__group">
+                          <Select
+                            value={restoreFolderSelection}
+                            options={restoreFolderSelectOptions}
+                            placeholder="Restore from folder…"
+                            onChange={setRestoreFolderSelection}
+                            fullWidth
+                          />
+                          <Button
+                            variant="secondary"
+                            size="sm"
+                            onClick={restoreExcludedFromFolder}
+                            disabled={!restoreFolderSelection}
+                          >
+                            Restore folder
+                          </Button>
+                        </div>
+                      )}
+                    </div>
+
+                    {excludedFolderOptions.length > 1 && (
+                      <div className="settings-action-bar__filter">
+                        <Select
+                          id="excluded-folder-filter"
+                          label="Show"
+                          value={excludedFolderFilter}
+                          options={excludedFilterOptions}
+                          onChange={setExcludedFolderFilter}
+                          fullWidth
+                        />
+                      </div>
+                    )}
+
+                    <ul className="excluded-list">
+                    {visibleExcludedPaths.map((path) => (
                       <li
                         key={path}
                         className={`excluded-list__item${
@@ -577,7 +782,8 @@ export const SettingsView = forwardRef<SettingsViewHandle, SettingsViewProps>(
                         </Button>
                       </li>
                     ))}
-                  </ul>
+                    </ul>
+                  </>
                 )}
               </DetailPanel>
             )}
@@ -585,18 +791,42 @@ export const SettingsView = forwardRef<SettingsViewHandle, SettingsViewProps>(
             {activePanel === "duplicates" && (
               <DetailPanel
                 title="Duplicate files"
-                description="Scans file contents (not names). Hover a file to preview and compare copies."
+                description="Scans file contents (not names). Choose folders, then compare copies and exclude any you do not need."
                 onClose={closePanel}
               >
+                {duplicateFolderOptions.length > 0 && (
+                  <OptionList
+                    title="Folders to scan"
+                    items={duplicateScanListItems}
+                    onToggle={toggleDuplicateScanFolder}
+                    onSelectAll={() =>
+                      setDuplicateScanFolders(
+                        new Set(
+                          duplicateFolderOptions.map(
+                            (option) => option.folderPath,
+                          ),
+                        ),
+                      )
+                    }
+                    onSelectNone={() => setDuplicateScanFolders(new Set())}
+                  />
+                )}
+
                 <div className="duplicates-toolbar">
                   <Button
                     variant="secondary"
                     size="md"
                     icon={<RefreshCw size={14} strokeWidth={1.5} />}
                     onClick={() => void scanDuplicates()}
-                    disabled={isScanningDuplicates}
+                    disabled={
+                      isScanningDuplicates || duplicateScanFolders.size === 0
+                    }
                   >
-                    {isScanningDuplicates ? "Scanning…" : "Scan library"}
+                    {isScanningDuplicates
+                      ? "Scanning…"
+                      : duplicateScanFolders.size === folders.length
+                        ? "Scan library"
+                        : "Scan selected"}
                   </Button>
                   <Button
                     variant="primary"
@@ -658,7 +888,7 @@ export const SettingsView = forwardRef<SettingsViewHandle, SettingsViewProps>(
                           </span>
                         </div>
                         <ul className="duplicate-group__list">
-                          {group.files.map((file, index) => (
+                          {group.files.map((file) => (
                             <li
                               key={file.path}
                               className={`duplicate-file-row${
@@ -686,25 +916,18 @@ export const SettingsView = forwardRef<SettingsViewHandle, SettingsViewProps>(
                               <div className="duplicate-file-row__info">
                                 <span className="duplicate-file-row__name">
                                   {fileNameFromPath(file.path)}
-                                  {index === 0 && (
-                                    <span className="duplicate-file-row__keep">
-                                      keep
-                                    </span>
-                                  )}
                                 </span>
                                 <span className="duplicate-file-row__path">
                                   {file.path}
                                 </span>
                               </div>
-                              {index > 0 && (
-                                <Button
-                                  variant="secondary"
-                                  size="sm"
-                                  onClick={() => onExcludePath(file.path)}
-                                >
-                                  Exclude
-                                </Button>
-                              )}
+                              <Button
+                                variant="secondary"
+                                size="sm"
+                                onClick={() => onExcludePath(file.path)}
+                              >
+                                Exclude
+                              </Button>
                             </li>
                           ))}
                         </ul>

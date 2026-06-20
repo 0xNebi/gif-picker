@@ -58,9 +58,9 @@ import {
   setThumbnailMemoryBudgetMb,
 } from "./utils/extractFirstFrame";
 import {
-  getMediaKind,
   isGifPath,
   matchesMediaFilter,
+  resolveMediaKind,
   type MediaFile,
 } from "./utils/mediaTypes";
 import { applyColorScheme } from "./utils/theme";
@@ -153,6 +153,7 @@ export function App() {
     excludePath,
     excludePaths,
     restoreExcluded,
+    restoreExcludedPaths,
     addKeyword,
   } = useLibraryStore();
 
@@ -221,7 +222,7 @@ export function App() {
         const folderPath = normalizePath(folder.path);
         for (const f of files) {
           const path = normalizePath(f);
-          const kind = getMediaKind(path);
+          const kind = await resolveMediaKind(path);
           if (!kind) continue;
 
           const item: MediaFile = {
@@ -301,10 +302,15 @@ export function App() {
     [media, excludedSet],
   );
 
-  const libraryPaths = useMemo(
-    () => visibleMedia.map((item) => item.path),
-    [visibleMedia],
-  );
+  const libraryPathsByFolder = useMemo(() => {
+    const byFolder = new Map<string, string[]>();
+    for (const item of visibleMedia) {
+      const list = byFolder.get(item.folderPath) ?? [];
+      list.push(item.path);
+      byFolder.set(item.folderPath, list);
+    }
+    return byFolder;
+  }, [visibleMedia]);
 
   const folderCounts = useMemo(() => {
     const counts = new Map<string, number>();
@@ -1118,15 +1124,25 @@ export function App() {
               <SettingsView
                 ref={settingsRef}
                 settings={settings}
+                folders={folders}
                 excludedPaths={meta.excluded}
                 excludedPathSet={excludedSet}
                 tagOrder={meta.tagOrder}
-                libraryPaths={libraryPaths}
+                libraryPathsByFolder={libraryPathsByFolder}
                 onOpenDiscordImport={() => setDiscordImportOpen(true)}
                 onChange={(patch) => void updateSettings(patch)}
                 onRestoreExcluded={(path) => {
                   void restoreExcluded(path);
                   showToast("Restored to library");
+                }}
+                onRestoreExcludedPaths={(paths) => {
+                  void restoreExcludedPaths(paths).then(() => {
+                    showToast(
+                      paths.length === 1
+                        ? "Restored 1 file to library"
+                        : `Restored ${paths.length} files to library`,
+                    );
+                  });
                 }}
                 onExcludePath={(path) => {
                   void excludePath(path).then(() => {

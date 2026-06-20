@@ -83,6 +83,7 @@ interface LibraryStore {
   excludePath: (path: string) => Promise<void>;
   excludePaths: (paths: string[]) => Promise<void>;
   restoreExcluded: (path: string) => Promise<void>;
+  restoreExcludedPaths: (paths: string[]) => Promise<void>;
   addKeyword: (path: string, keyword: string) => Promise<void>;
 }
 
@@ -391,6 +392,16 @@ export const useLibraryStore = create<LibraryStore>((set, get) => ({
   restoreExcluded: async (path) => {
     const meta = structuredClone(get().meta);
     meta.excluded = meta.excluded.filter((value) => value !== path);
+    set({ meta });
+    await writeJsonFile(LIBRARY_FILE, { ...meta, folders: get().folders });
+  },
+
+  restoreExcludedPaths: async (paths) => {
+    if (paths.length === 0) return;
+
+    const meta = structuredClone(get().meta);
+    const restoreSet = new Set(paths);
+    meta.excluded = meta.excluded.filter((value) => !restoreSet.has(value));
     set({ meta });
     await writeJsonFile(LIBRARY_FILE, { ...meta, folders: get().folders });
   },
