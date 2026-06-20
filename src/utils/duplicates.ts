@@ -27,6 +27,19 @@ function normalizeScanProgress(
   };
 }
 
+function uniquePaths(paths: string[]): string[] {
+  const seen = new Set<string>();
+  const unique: string[] = [];
+
+  for (const path of paths) {
+    if (seen.has(path)) continue;
+    seen.add(path);
+    unique.push(path);
+  }
+
+  return unique;
+}
+
 export async function findDuplicateFiles(
   paths: string[],
   onProgress?: (progress: DuplicateScanProgress) => void,
@@ -43,7 +56,9 @@ export async function findDuplicateFiles(
   }
 
   try {
-    return await invoke<DuplicateFileGroup[]>("find_duplicate_files", { paths });
+    return await invoke<DuplicateFileGroup[]>("find_duplicate_files", {
+      paths: uniquePaths(paths),
+    });
   } finally {
     await unlisten?.();
   }

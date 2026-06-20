@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -288,10 +288,24 @@ fn hash_file_streaming(path: &str) -> Result<(String, u64, String), String> {
     Ok((path.to_string(), size, format!("{:x}", hasher.finalize())))
 }
 
+fn dedupe_paths(paths: Vec<String>) -> Vec<String> {
+    let mut unique = Vec::with_capacity(paths.len());
+    let mut seen = HashSet::with_capacity(paths.len());
+
+    for path in paths {
+        if seen.insert(path.clone()) {
+            unique.push(path);
+        }
+    }
+
+    unique
+}
+
 fn find_duplicate_files_blocking(
     app: tauri::AppHandle,
     paths: Vec<String>,
 ) -> Result<Vec<DuplicateFileGroup>, String> {
+    let paths = dedupe_paths(paths);
     let total = paths.len();
     let mut by_size: HashMap<u64, Vec<String>> = HashMap::new();
 
@@ -365,10 +379,11 @@ fn find_duplicate_files_blocking(
 
     let mut by_hash: HashMap<String, Vec<DuplicateFileEntry>> = HashMap::new();
     for (path, size, hash) in hashed {
-        by_hash
-            .entry(hash)
-            .or_default()
-            .push(DuplicateFileEntry { path, size });
+        let group = by_hash.entry(hash).or_default();
+        if group.iter().any(|entry| entry.path == path) {
+            continue;
+        }
+        group.push(DuplicateFileEntry { path, size });
     }
 
     let mut groups: Vec<DuplicateFileGroup> = by_hash

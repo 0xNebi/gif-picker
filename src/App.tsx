@@ -207,7 +207,7 @@ export function App() {
     setIsLoading(true);
     setStatus("Scanning folders...");
     clearThumbnailCache();
-    const all: MediaFile[] = [];
+    const byPath = new Map<string, MediaFile>();
 
     for (const folder of folders) {
       try {
@@ -215,22 +215,30 @@ export function App() {
           folder.path,
           settings.includeVideos,
         );
+        const folderPath = normalizePath(folder.path);
         for (const f of files) {
           const path = normalizePath(f);
           const kind = getMediaKind(path);
           if (!kind) continue;
-          all.push({
+
+          const item: MediaFile = {
             path,
             name: f.split("/").pop() || f,
-            folderPath: normalizePath(folder.path),
+            folderPath,
             kind,
-          });
+          };
+          const existing = byPath.get(path);
+          // Overlapping watched folders can discover the same file twice.
+          if (!existing || folderPath.length > existing.folderPath.length) {
+            byPath.set(path, item);
+          }
         }
       } catch (e) {
         console.warn("scan error for", folder.path, e);
       }
     }
 
+    const all = Array.from(byPath.values());
     all.sort((a, b) => a.name.localeCompare(b.name));
     setMedia(all);
     setStatus(`${all.length} items from ${folders.length} folders`);
