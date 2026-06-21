@@ -91,3 +91,16 @@ export function parseDiscordExportJson(raw: string): string[] {
   const parsed = JSON.parse(raw) as unknown;
   return extractGifUrlsFromDiscordExport(parsed);
 }
+
+export type DiscordImportMode = "all" | "new-only";
+
+/** URLs from the latest export that were not part of a previous import. */
+export function filterNewDiscordUrls(
+  urls: string[],
+  previousUrls: string[],
+): string[] {
+  if (previousUrls.length === 0) return urls;
+
+  const known = new Set(previousUrls);
+  return urls.filter((url) => !known.has(url));
+}

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useId, useState } from "react";
+import { useCallback, useEffect, useId, useMemo, useState } from "react";
 import {
   Check,
   ClipboardCopy,
@@ -15,11 +15,18 @@ import { readTextFile } from "@tauri-apps/plugin-fs";
 
 import { Button } from "./ui/Button";
 import { IconButton } from "./ui/IconButton";
+import { Select, type SelectOption } from "./ui/Select";
 import {
   DISCORD_APP_URL,
   DISCORD_EXTRACT_SCRIPT,
+  filterNewDiscordUrls,
   parseDiscordExportJson,
+  type DiscordImportMode,
 } from "../utils/discordGifs";
+import {
+  loadDiscordImportRecord,
+  saveDiscordImportRecord,
+} from "../utils/discordImportState";
 
 interface DiscordDownloadProgress {
   downloaded: number;
@@ -45,6 +52,19 @@ interface DiscordImportDialogProps {
   showToast: (message: string) => void;
 }
 
+const IMPORT_MODE_OPTIONS: SelectOption[] = [
+  {
+    value: "all",
+    label: "All GIFs",
+    hint: "Download every URL from the export (skip files already on disk)",
+  },
+  {
+    value: "new-only",
+    label: "New only",
+    hint: "Compare with your last import and download only new URLs",
+  },
+];
+
 function fileNameFromPath(path: string): string {
   const parts = path.replace(/\\/g, "/").split("/");
   return parts[parts.length - 1] || path;
@@ -65,6 +85,13 @@ export function DiscordImportDialog({
   const [downloadProgress, setDownloadProgress] =
     useState<DiscordDownloadProgress | null>(null);
   const [downloadError, setDownloadError] = useState<string | null>(null);
+  const [importMode, setImportMode] = useState<DiscordImportMode>("all");
+  const [previousUrls, setPreviousUrls] = useState<string[]>([]);
+  const [previousImportLoaded, setPreviousImportLoaded] = useState(false);
+  const [hasPersistedHistory, setHasPersistedHistory] = useState(false);
+  const [previousBaselineLabel, setPreviousBaselineLabel] = useState<string | null>(
+    null,
+  );
 
   const resetState = useCallback(() => {
     setScriptCopied(false);
@@ -74,6 +101,11 @@ export function DiscordImportDialog({
     setIsDownloading(false);
     setDownloadProgress(null);
     setDownloadError(null);
+    setImportMode("all");
+    setPreviousUrls([]);
+    setPreviousImportLoaded(false);
+    setHasPersistedHistory(false);
+    setPreviousBaselineLabel(null);
   }, []);
 
   useEffect(() => {
@@ -177,12 +209,82 @@ export function DiscordImportDialog({
     });
 
     if (!selected || typeof selected !== "string") return;
-    setDestDir(selected.replace(/\\/g, "/"));
+
+    const normalized = selected.replace(/\\/g, "/");
+    setDestDir(normalized);
     setDownloadError(null);
+    setPreviousImportLoaded(false);
+    setPreviousBaselineLabel(null);
+
+    try {
+      const record = await loadDiscordImportRecord(normalized);
+      const savedUrls = record?.urls ?? [];
+      setPreviousUrls(savedUrls);
+      setHasPersistedHistory(savedUrls.length > 0);
+      setPreviousImportLoaded(true);
+      if (savedUrls.length > 0) {
+        setImportMode("new-only");
+      }
+    } catch (error) {
+      console.error("[gif-picker] failed to load Discord import history", error);
+      setPreviousUrls([]);
+      setHasPersistedHistory(false);
+      setPreviousImportLoaded(true);
+    }
   }, []);
+
+  const loadPreviousBaseline = useCallback(async () => {
+    const selected = await open({
+      multiple: false,
+      title: "Select your previous discord-favorite-gifs.json",
+      filters: [{ name: "JSON", extensions: ["json"] }],
+    });
+
+    if (!selected || typeof selected !== "string") return;
+
+    try {
+      const raw = await readTextFile(selected);
+      const urls = parseDiscordExportJson(raw);
+      if (urls.length === 0) {
+        setDownloadError("No GIF URLs found in that previous export.");
+        return;
+      }
+
+      setPreviousUrls(urls);
+      setPreviousBaselineLabel(fileNameFromPath(selected));
+      setImportMode("new-only");
+      setDownloadError(null);
+      showToast(`Loaded ${urls.length} URLs from previous export`);
+    } catch (error) {
+      console.error("[gif-picker] failed to parse previous Discord JSON", error);
+      setDownloadError("Could not read that JSON file.");
+    }
+  }, [showToast]);
+
+  const urlsToDownload = useMemo(() => {
+    if (importMode === "all") return gifUrls;
+    return filterNewDiscordUrls(gifUrls, previousUrls);
+  }, [gifUrls, importMode, previousUrls]);
+
+  const newUrlCount = useMemo(
+    () => filterNewDiscordUrls(gifUrls, previousUrls).length,
+    [gifUrls, previousUrls],
+  );
 
   const downloadGifs = useCallback(async () => {
     if (gifUrls.length === 0 || !destDir) return;
+
+    if (importMode === "new-only" && urlsToDownload.length === 0) {
+      try {
+        await saveDiscordImportRecord(destDir, gifUrls);
+      } catch (error) {
+        console.error("[gif-picker] failed to save Discord import history", error);
+      }
+      showToast("No new GIFs — your library is up to date");
+      onComplete(destDir);
+      onClose();
+      return;
+    }
 
     setIsDownloading(true);
     setDownloadError(null);
@@ -190,20 +292,35 @@ export function DiscordImportDialog({
       downloaded: 0,
       skipped: 0,
       failed: 0,
-      total: gifUrls.length,
+      total: urlsToDownload.length,
     });
 
     try {
       const result = await invoke<DiscordDownloadResult>("download_discord_gifs", {
-        urls: gifUrls,
+        urls: urlsToDownload,
         destDir,
       });
 
+      try {
+        await saveDiscordImportRecord(destDir, gifUrls);
+      } catch (error) {
+        console.error("[gif-picker] failed to save Discord import history", error);
+      }
+
       if (result.downloaded === 0) {
+        if (result.failed === 0 && result.skipped > 0) {
+          showToast("No new GIFs — existing files kept, import history saved");
+          onComplete(destDir);
+          onClose();
+          return;
+        }
+
         setDownloadError(
           result.failed > 0
             ? "Download failed for every GIF. Check your connection and try again."
-            : "No new GIFs were downloaded.",
+            : importMode === "new-only"
+              ? "No new GIFs were downloaded."
+              : "No GIFs were downloaded.",
         );
         return;
       }
@@ -211,7 +328,9 @@ export function DiscordImportDialog({
       const summary =
         result.failed > 0
           ? `Downloaded ${result.downloaded} GIFs (${result.failed} failed)`
-          : `Downloaded ${result.downloaded} GIFs`;
+          : importMode === "new-only"
+            ? `Downloaded ${result.downloaded} new GIFs`
+            : `Downloaded ${result.downloaded} GIFs`;
       showToast(summary);
       onComplete(destDir);
       onClose();
@@ -222,7 +341,15 @@ export function DiscordImportDialog({
       setIsDownloading(false);
       setDownloadProgress(null);
     }
-  }, [destDir, gifUrls, onClose, onComplete, showToast]);
+  }, [
+    destDir,
+    gifUrls,
+    importMode,
+    onClose,
+    onComplete,
+    showToast,
+    urlsToDownload,
+  ]);
 
   if (!isOpen) return null;
 
@@ -340,8 +467,8 @@ export function DiscordImportDialog({
               <div>
                 <h4>Download GIFs to a folder</h4>
                 <p>
-                  Pick a destination folder. The app will download each GIF and add the
-                  folder to your library.
+                  Pick a destination folder and choose whether to import everything or
+                  only GIFs that are new since your last import to that folder.
                 </p>
               </div>
             </div>
@@ -361,6 +488,49 @@ export function DiscordImportDialog({
                 </span>
               )}
             </div>
+            {gifUrls.length > 0 && destDir && previousImportLoaded && (
+              <div className="discord-import-mode">
+                <Select
+                  label="Import mode"
+                  value={importMode}
+                  options={IMPORT_MODE_OPTIONS}
+                  onChange={(value) => setImportMode(value as DiscordImportMode)}
+                  disabled={isDownloading}
+                  fullWidth
+                />
+                {importMode === "new-only" && previousUrls.length === 0 && (
+                  <div className="discord-import-baseline">
+                    <p className="discord-import-mode__note">
+                      No saved import history for this folder. If you imported here before
+                      this update, load an older <code>discord-favorite-gifs.json</code> to
+                      compare — otherwise every URL is treated as new (files already on
+                      disk are still skipped).
+                    </p>
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      icon={<FileJson size={14} strokeWidth={1.5} />}
+                      onClick={() => void loadPreviousBaseline()}
+                      disabled={isDownloading}
+                    >
+                      Load previous export
+                    </Button>
+                  </div>
+                )}
+                {importMode === "new-only" && previousUrls.length > 0 && (
+                  <p className="discord-import-mode__note">
+                    <span className="discord-import-mode__count">{newUrlCount}</span> new
+                    of {gifUrls.length} GIF
+                    {gifUrls.length === 1 ? "" : "s"}
+                    {hasPersistedHistory
+                      ? " since your last import"
+                      : previousBaselineLabel
+                        ? ` compared to ${previousBaselineLabel}`
+                        : " compared to previous export"}
+                  </p>
+                )}
+              </div>
+            )}
           </li>
         </ol>
 
@@ -402,7 +572,13 @@ export function DiscordImportDialog({
             disabled={isDownloading || gifUrls.length === 0 || !destDir}
             loading={isDownloading}
           >
-            {isDownloading ? "Downloading…" : "Download GIFs"}
+            {isDownloading
+              ? "Downloading…"
+              : importMode === "new-only" && urlsToDownload.length === 0
+                ? "Up to date"
+                : importMode === "new-only"
+                  ? `Download ${urlsToDownload.length} new GIF${urlsToDownload.length === 1 ? "" : "s"}`
+                  : "Download GIFs"}
           </Button>
         </div>
       </div>
