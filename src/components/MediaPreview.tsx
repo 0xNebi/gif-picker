@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { readFile } from "@tauri-apps/plugin-fs";
 
+import { usePrivacyMask } from "../contexts/PrivacyMaskContext";
 import { isVideoPath, mimeForPath, resolveMediaKind } from "../utils/mediaTypes";
 
 interface MediaPreviewProps {
@@ -11,6 +12,7 @@ interface MediaPreviewProps {
 }
 
 export function MediaPreview({ path, alt, className }: MediaPreviewProps) {
+  const privacyMasked = usePrivacyMask();
   const [src, setSrc] = useState(() => convertFileSrc(path));
   const [triedFallback, setTriedFallback] = useState(false);
   const [isVideo, setIsVideo] = useState(() => isVideoPath(path));
@@ -55,6 +57,18 @@ export function MediaPreview({ path, alt, className }: MediaPreviewProps) {
       console.error("[gif-picker] Preview fallback failed for", path, err);
     }
   };
+
+  if (privacyMasked) {
+    return (
+      <div
+        className={[className, "gif-thumbnail-skeleton", "media-preview-privacy"]
+          .filter(Boolean)
+          .join(" ")}
+        role="img"
+        aria-label={`${alt} (hidden while app is in background)`}
+      />
+    );
+  }
 
   if (isVideo) {
     return (

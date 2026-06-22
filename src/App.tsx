@@ -46,6 +46,7 @@ import { Button } from "./components/ui/Button";
 import { IconButton } from "./components/ui/IconButton";
 import { InputDialog } from "./components/ui/InputDialog";
 import { Toast } from "./components/ui/Toast";
+import { PrivacyMaskProvider } from "./contexts/PrivacyMaskContext";
 import { useAppUpdater } from "./hooks/useAppUpdater";
 import { useKeyboardShortcuts } from "./hooks/useKeyboardShortcuts";
 import {
@@ -812,6 +813,7 @@ export function App() {
             : "All media";
 
   return (
+    <PrivacyMaskProvider enabled={settings.hideMediaWhenUnfocused}>
     <div className="app-shell">
       <div className="titlebar" data-tauri-drag-region>
         <div className="titlebar-left" data-tauri-drag-region>
@@ -1374,5 +1376,6 @@ export function App() {
 
       <Toast message={toast} onClear={() => setToast(null)} />
     </div>
+    </PrivacyMaskProvider>
   );
 }

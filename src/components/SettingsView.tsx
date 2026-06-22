@@ -516,6 +516,18 @@ export const SettingsView = forwardRef<SettingsViewHandle, SettingsViewProps>(
             </section>
 
             <section className="settings-section">
+              <h3 className="settings-section__title">Privacy</h3>
+              <Toggle
+                label="Hide media when unfocused"
+                hint="Show a neutral loading placeholder in the grid and previews while another app is focused"
+                checked={settings.hideMediaWhenUnfocused}
+                onChange={(hideMediaWhenUnfocused) =>
+                  onChange({ hideMediaWhenUnfocused })
+                }
+              />
+            </section>
+
+            <section className="settings-section">
               <h3 className="settings-section__title">Discord</h3>
               <p className="settings-section__note">
                 Export your Discord favorite GIFs from the browser, then download them

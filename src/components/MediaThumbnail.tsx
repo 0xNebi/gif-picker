@@ -2,6 +2,7 @@ import { memo, useEffect, useState } from "react";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { Film, ImageIcon } from "lucide-react";
 
+import { usePrivacyMask } from "../contexts/PrivacyMaskContext";
 import {
   getCachedThumbnail,
   requestThumbnail,
@@ -21,6 +22,7 @@ export const MediaThumbnail = memo(function MediaThumbnail({
   staticOnly,
   kind,
 }: MediaThumbnailProps) {
+  const privacyMasked = usePrivacyMask();
   const assetUrl = convertFileSrc(path);
   const isVideo = kind === "video" || isVideoPath(path);
   const [src, setSrc] = useState(() => getCachedThumbnail(path) ?? null);
@@ -56,6 +58,10 @@ export const MediaThumbnail = memo(function MediaThumbnail({
       cancelled = true;
     };
   }, [path, assetUrl, staticOnly]);
+
+  if (privacyMasked) {
+    return <div className="gif-thumbnail-skeleton" aria-hidden />;
+  }
 
   if (!staticOnly && src) {
     if (isVideo) {

@@ -1050,6 +1050,11 @@ input, textarea, .search-input, .modal-path, .folder-path {
   color: var(--color-ink-tertiary);
 }
 
+.media-preview-privacy {
+  width: 100%;
+  min-height: 200px;
+}
+
 /* ─── Modal ──────────────────────────────────────────────────────────────── */
 
 .modal-backdrop {

@@ -41,6 +41,8 @@ export interface AppSettings {
   autoCheckUpdates: boolean;
   /** Download and install updates automatically when one is found. */
   autoInstallUpdates: boolean;
+  /** Replace thumbnails and previews with a neutral placeholder while unfocused. */
+  hideMediaWhenUnfocused: boolean;
 }
 
 export interface LibraryMeta {
@@ -104,6 +106,7 @@ const DEFAULT_SETTINGS: AppSettings = {
   blurTags: [],
   autoCheckUpdates: true,
   autoInstallUpdates: false,
+  hideMediaWhenUnfocused: true,
 };
 
 const DEFAULT_META: LibraryMeta = {
@@ -230,6 +233,10 @@ export const useLibraryStore = create<LibraryStore>((set, get) => ({
     }
     if (typeof mergedSettings.autoInstallUpdates !== "boolean") {
       mergedSettings.autoInstallUpdates = DEFAULT_SETTINGS.autoInstallUpdates;
+    }
+    if (typeof mergedSettings.hideMediaWhenUnfocused !== "boolean") {
+      mergedSettings.hideMediaWhenUnfocused =
+        DEFAULT_SETTINGS.hideMediaWhenUnfocused;
     }
 
     set({
