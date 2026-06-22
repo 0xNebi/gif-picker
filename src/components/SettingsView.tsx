@@ -15,6 +15,7 @@ import {
   EyeOff,
   File,
   FolderOpen,
+  Github,
   RefreshCw,
   X,
 } from "lucide-react";
@@ -41,7 +42,14 @@ import {
   copyPathToClipboard,
   fileNameFromPath,
 } from "../utils/clipboard";
+import {
+  GITHUB_AUTHOR,
+  GITHUB_AVATAR_URL,
+  GITHUB_PROFILE_URL,
+  GITHUB_REPO_URL,
+} from "../constants/appLinks";
 import { openContainingFolder, openFile } from "../utils/fileActions";
+import { openExternalUrl } from "../utils/openUrl";
 import { groupPathsByFolder, normalizePath } from "../utils/paths";
 
 type SettingsPanel = "excluded" | "tags" | "duplicates";
@@ -473,6 +481,12 @@ export const SettingsView = forwardRef<SettingsViewHandle, SettingsViewProps>(
       ? fileNameFromPath(hoveredPreviewPath)
       : undefined;
 
+    const openLink = useCallback((url: string) => {
+      void openExternalUrl(url).catch((error) => {
+        console.error("[gif-picker] failed to open link", error);
+      });
+    }, []);
+
     return (
       <div className="settings-shell">
         <div
@@ -640,6 +654,58 @@ export const SettingsView = forwardRef<SettingsViewHandle, SettingsViewProps>(
                   )
                 }
               />
+            </section>
+
+            <section className="settings-section">
+              <h3 className="settings-section__title">About</h3>
+              <div className="settings-about">
+                <button
+                  type="button"
+                  className="settings-about__row"
+                  onClick={() => openLink(GITHUB_REPO_URL)}
+                >
+                  <span className="settings-about__icon" aria-hidden>
+                    <Github size={16} strokeWidth={1.5} />
+                  </span>
+                  <span className="settings-about__body">
+                    <span className="settings-about__title">View on GitHub</span>
+                    <span className="settings-about__hint">
+                      Source code, issues, and releases
+                    </span>
+                  </span>
+                  <ChevronRight
+                    size={16}
+                    strokeWidth={1.5}
+                    className="settings-about__chevron"
+                  />
+                </button>
+                <button
+                  type="button"
+                  className="settings-about__row"
+                  onClick={() => openLink(GITHUB_PROFILE_URL)}
+                >
+                  <img
+                    className="settings-about__avatar"
+                    src={GITHUB_AVATAR_URL}
+                    alt=""
+                    aria-hidden
+                    draggable={false}
+                    width={28}
+                    height={28}
+                  />
+                  <span className="settings-about__body">
+                    <span className="settings-about__title">
+                      Made by {GITHUB_AUTHOR}
+                    </span>
+                    <span className="settings-about__hint">GitHub profile</span>
+                  </span>
+                  <ChevronRight
+                    size={16}
+                    strokeWidth={1.5}
+                    className="settings-about__chevron"
+                  />
+                </button>
+              </div>
             </section>
           </div>
 
