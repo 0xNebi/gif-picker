@@ -36,9 +36,20 @@
       }
     }
   },
-  "plugins": {},
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEIyMDU4RThERkM4QUUyNjMKUldSajRvcjhqWTRGc3NiVXVrNmExcDZBajRaTy9qN2VLWDEvdFFHSUdVd2JFazBvcG43ZjNaWXYK",
+      "endpoints": [
+        "https://github.com/0xNebi/gif-picker/releases/latest/download/latest.json"
+      ],
+      "windows": {
+        "installMode": "passive"
+      }
+    }
+  },
   "bundle": {
     "active": true,
+    "createUpdaterArtifacts": true,
     "targets": "all",
     "icon": [
       "icons/32x32.png",

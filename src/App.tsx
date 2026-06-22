@@ -46,6 +46,7 @@ import { Button } from "./components/ui/Button";
 import { IconButton } from "./components/ui/IconButton";
 import { InputDialog } from "./components/ui/InputDialog";
 import { Toast } from "./components/ui/Toast";
+import { useAppUpdater } from "./hooks/useAppUpdater";
 import { useKeyboardShortcuts } from "./hooks/useKeyboardShortcuts";
 import {
   useLibraryStore,
@@ -178,6 +179,8 @@ export function App() {
   const searchRef = useRef<HTMLInputElement>(null);
   const settingsRef = useRef<SettingsViewHandle>(null);
   const hoveredMediaRef = useRef<MediaFile | null>(null);
+  const updater = useAppUpdater();
+  const startupUpdateCheckedRef = useRef(false);
 
   useEffect(() => {
     void hydrate();
@@ -192,6 +195,19 @@ export function App() {
     if (!hydrated) return;
     applyColorScheme(settings.colorScheme);
   }, [hydrated, settings.colorScheme]);
+
+  useEffect(() => {
+    if (!hydrated || !settings.autoCheckUpdates || startupUpdateCheckedRef.current) {
+      return;
+    }
+    startupUpdateCheckedRef.current = true;
+    void updater.checkForUpdates({ autoInstall: settings.autoInstallUpdates });
+  }, [
+    hydrated,
+    settings.autoCheckUpdates,
+    settings.autoInstallUpdates,
+    updater.checkForUpdates,
+  ]);
 
   useEffect(() => {
     const preventNativeMenu = (event: MouseEvent) => {
@@ -1124,6 +1140,7 @@ export function App() {
               <SettingsView
                 ref={settingsRef}
                 settings={settings}
+                updater={updater}
                 folders={folders}
                 excludedPaths={meta.excluded}
                 excludedPathSet={excludedSet}

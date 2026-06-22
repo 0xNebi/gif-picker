@@ -6,9 +6,9 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use rayon::prelude::*;
 use serde::Serialize;
 use sha2::{Digest, Sha256};
+use tauri::path::BaseDirectory;
 use tauri::Emitter;
 use tauri::Manager;
-use tauri::path::BaseDirectory;
 use tauri_plugin_opener::OpenerExt;
 
 const LEGACY_APP_IDENTIFIERS: &[&str] = &["com.gifpicker.app"];
@@ -143,9 +143,7 @@ struct DiscordDownloadResult {
 }
 
 fn sniff_media_extension(header: &[u8]) -> Option<&'static str> {
-    if header.len() >= 6
-        && (header.starts_with(b"GIF87a") || header.starts_with(b"GIF89a"))
-    {
+    if header.len() >= 6 && (header.starts_with(b"GIF87a") || header.starts_with(b"GIF89a")) {
         return Some("gif");
     }
     if header.len() >= 4 && header.starts_with(b"\x89PNG") {
@@ -198,7 +196,10 @@ fn read_file_header(path: &Path) -> Result<[u8; 16], String> {
     Ok(header)
 }
 
-fn correct_media_extension(path: &Path, preferred_extension: Option<&str>) -> Result<PathBuf, String> {
+fn correct_media_extension(
+    path: &Path,
+    preferred_extension: Option<&str>,
+) -> Result<PathBuf, String> {
     let header = read_file_header(path)?;
     let detected = sniff_media_extension(&header).or(preferred_extension);
 
@@ -472,9 +473,11 @@ async fn download_discord_gifs(
     urls: Vec<String>,
     dest_dir: String,
 ) -> Result<DiscordDownloadResult, String> {
-    tauri::async_runtime::spawn_blocking(move || download_discord_gifs_blocking(app, urls, dest_dir))
-        .await
-        .map_err(|error| format!("Discord download task failed: {error}"))?
+    tauri::async_runtime::spawn_blocking(move || {
+        download_discord_gifs_blocking(app, urls, dest_dir)
+    })
+    .await
+    .map_err(|error| format!("Discord download task failed: {error}"))?
 }
 
 #[tauri::command]
@@ -484,10 +487,7 @@ fn copy_text_to_clipboard(text: String) -> Result<(), String> {
 }
 
 fn is_video_extension(ext: &str) -> bool {
-    matches!(
-        ext,
-        "mp4" | "webm" | "mov" | "mkv" | "m4v" | "avi" | "gifv"
-    )
+    matches!(ext, "mp4" | "webm" | "mov" | "mkv" | "m4v" | "avi" | "gifv")
 }
 
 fn file_extension(path: &Path) -> String {
@@ -516,8 +516,8 @@ fn copy_image_file_to_clipboard(path: &Path) -> Result<(), String> {
 fn copy_file_to_clipboard(path: &str) -> Result<(), String> {
     use clipboard_win::{formats::FileList, Clipboard, Setter};
 
-    let _clip = Clipboard::new_attempts(10)
-        .map_err(|e| format!("Failed to open clipboard: {e}"))?;
+    let _clip =
+        Clipboard::new_attempts(10).map_err(|e| format!("Failed to open clipboard: {e}"))?;
     FileList
         .write_clipboard(std::slice::from_ref(&path))
         .map_err(|e| format!("Failed to copy file to clipboard: {e}"))
@@ -552,8 +552,7 @@ fn stage_gif_alias(source: &Path) -> Result<std::path::PathBuf, String> {
     }
 
     if std::fs::hard_link(source, &dest).is_err() {
-        std::fs::copy(source, &dest)
-            .map_err(|e| format!("Failed to stage .gif alias: {e}"))?;
+        std::fs::copy(source, &dest).map_err(|e| format!("Failed to stage .gif alias: {e}"))?;
     }
 
     Ok(dest)
@@ -780,7 +779,9 @@ async fn find_duplicate_files(
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    let mut builder = tauri::Builder::default();
+    let mut builder = tauri::Builder::default()
+        .plugin(tauri_plugin_process::init())
+        .plugin(tauri_plugin_updater::Builder::new().build());
 
     #[cfg(desktop)]
     {

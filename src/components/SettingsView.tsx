@@ -49,6 +49,7 @@ import {
   GITHUB_REPO_URL,
 } from "../constants/appLinks";
 import { openContainingFolder, openFile } from "../utils/fileActions";
+import type { AppUpdaterState } from "../hooks/useAppUpdater";
 import { openExternalUrl } from "../utils/openUrl";
 import { groupPathsByFolder, normalizePath } from "../utils/paths";
 
@@ -71,6 +72,7 @@ interface SettingsViewProps {
   onExcludePath: (path: string) => void;
   onExcludePaths: (paths: string[]) => void;
   onOpenDiscordImport: () => void;
+  updater: AppUpdaterState;
 }
 
 function menuIcon(icon: ReactNode): ReactNode {
@@ -201,6 +203,7 @@ export const SettingsView = forwardRef<SettingsViewHandle, SettingsViewProps>(
       onExcludePath,
       onExcludePaths,
       onOpenDiscordImport,
+      updater,
     },
     ref,
   ) {
@@ -658,6 +661,103 @@ export const SettingsView = forwardRef<SettingsViewHandle, SettingsViewProps>(
 
             <section className="settings-section">
               <h3 className="settings-section__title">About</h3>
+              <div className="settings-about-panel">
+                <div className="settings-about-version">
+                  <span className="settings-about-version__label">
+                    Version {updater.appVersion}
+                  </span>
+                  {updater.statusMessage && (
+                    <span className="settings-about-version__status">
+                      {updater.statusMessage}
+                    </span>
+                  )}
+                </div>
+
+                {updater.releaseNotes && updater.phase === "available" && (
+                  <p className="settings-about-release-notes">{updater.releaseNotes}</p>
+                )}
+
+                {updater.progressPercent !== null && (
+                  <div className="update-progress">
+                    <div className="update-progress__label">
+                      {updater.phase === "installing"
+                        ? "Installing update…"
+                        : `Downloading… ${updater.progressPercent}%`}
+                    </div>
+                    <div className="update-progress__track">
+                      <div
+                        className="update-progress__fill"
+                        style={{ width: `${updater.progressPercent}%` }}
+                      />
+                    </div>
+                  </div>
+                )}
+
+                {updater.errorMessage && (
+                  <p className="settings-about-error">{updater.errorMessage}</p>
+                )}
+
+                <div className="settings-about-actions">
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    icon={<RefreshCw size={14} strokeWidth={1.5} />}
+                    onClick={() => void updater.checkForUpdates()}
+                    disabled={
+                      updater.phase === "checking" ||
+                      updater.phase === "downloading" ||
+                      updater.phase === "installing"
+                    }
+                  >
+                    {updater.phase === "checking"
+                      ? "Checking…"
+                      : "Check for updates"}
+                  </Button>
+                  {updater.phase === "available" && updater.availableVersion && (
+                    <Button
+                      variant="primary"
+                      size="sm"
+                      icon={<Download size={14} strokeWidth={1.5} />}
+                      onClick={() => void updater.installUpdate()}
+                    >
+                      Install v{updater.availableVersion}
+                    </Button>
+                  )}
+                  {updater.phase === "ready" && (
+                    <Button
+                      variant="primary"
+                      size="sm"
+                      onClick={() => void updater.relaunchApp()}
+                    >
+                      Restart now
+                    </Button>
+                  )}
+                </div>
+
+                {updater.updatesSupported ? (
+                  <>
+                    <Toggle
+                      label="Check for updates automatically"
+                      hint="Look for new versions when the app starts"
+                      checked={settings.autoCheckUpdates}
+                      onChange={(autoCheckUpdates) => onChange({ autoCheckUpdates })}
+                    />
+                    <Toggle
+                      label="Install updates automatically"
+                      hint="Download and install without prompting when an update is found"
+                      checked={settings.autoInstallUpdates}
+                      onChange={(autoInstallUpdates) =>
+                        onChange({ autoInstallUpdates })
+                      }
+                    />
+                  </>
+                ) : (
+                  <p className="settings-section__note settings-about-dev-note">
+                    Automatic updates are available in installed release builds.
+                  </p>
+                )}
+              </div>
+
               <div className="settings-about">
                 <button
                   type="button"

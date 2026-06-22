@@ -37,6 +37,10 @@ export interface AppSettings {
   showFolderPaths: boolean;
   /** Tags that blur matching items in the grid. */
   blurTags: string[];
+  /** Check for app updates on startup (installed builds only). */
+  autoCheckUpdates: boolean;
+  /** Download and install updates automatically when one is found. */
+  autoInstallUpdates: boolean;
 }
 
 export interface LibraryMeta {
@@ -98,6 +102,8 @@ const DEFAULT_SETTINGS: AppSettings = {
   copyAsGif: false,
   showFolderPaths: true,
   blurTags: [],
+  autoCheckUpdates: true,
+  autoInstallUpdates: false,
 };
 
 const DEFAULT_META: LibraryMeta = {
@@ -218,6 +224,12 @@ export const useLibraryStore = create<LibraryStore>((set, get) => ({
     const mergedSettings = { ...DEFAULT_SETTINGS, ...settings };
     if (mergedSettings.colorScheme !== "light" && mergedSettings.colorScheme !== "dark") {
       mergedSettings.colorScheme = "light";
+    }
+    if (typeof mergedSettings.autoCheckUpdates !== "boolean") {
+      mergedSettings.autoCheckUpdates = DEFAULT_SETTINGS.autoCheckUpdates;
+    }
+    if (typeof mergedSettings.autoInstallUpdates !== "boolean") {
+      mergedSettings.autoInstallUpdates = DEFAULT_SETTINGS.autoInstallUpdates;
     }
 
     set({
