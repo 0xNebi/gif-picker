@@ -66,6 +66,13 @@ src-tauri/target/release/bundle/
 # Local dev workspace (design docs, assets, notes — never published)
 _dev/
 
+# Agent / IDE terminal captures (local only)
+terminals/
+
+# Tauri update signing keys — private key must never be committed
+*.key
+*.key.pub
+
 # Dev tooling
 .turbo/
 .pnp
