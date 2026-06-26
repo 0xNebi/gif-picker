@@ -3,6 +3,13 @@
   "private": true,
   "version": "0.2.0",
   "description": "Local GIF picker — browse and use your saved GIFs",
+  "author": "0xNebi",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/0xNebi/gif-picker.git"
+  },
+  "homepage": "https://github.com/0xNebi/gif-picker",
   "type": "module",
   "scripts": {
     "dev": "vite",
