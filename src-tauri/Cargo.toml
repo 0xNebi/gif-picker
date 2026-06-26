@@ -2,7 +2,9 @@
 name = "gif-picker"
 version = "0.2.0"
 description = "Gif Picker — Local GIF library browser"
-authors = ["You"]
+authors = ["0xNebi"]
+license = "MIT"
+repository = "https://github.com/0xNebi/gif-picker"
 edition = "2021"
 
 [lib]
