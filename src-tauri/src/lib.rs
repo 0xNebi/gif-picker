@@ -32,6 +32,50 @@ fn legacy_app_data_roots(current_app_data: &Path) -> Vec<PathBuf> {
         .collect()
 }
 
+fn library_has_user_data(parsed: &serde_json::Value) -> bool {
+    if parsed
+        .get("favorites")
+        .and_then(|value| value.as_array())
+        .is_some_and(|favorites| !favorites.is_empty())
+    {
+        return true;
+    }
+
+    if parsed
+        .get("excluded")
+        .and_then(|value| value.as_array())
+        .is_some_and(|excluded| !excluded.is_empty())
+    {
+        return true;
+    }
+
+    if parsed
+        .get("tagOrder")
+        .and_then(|value| value.as_array())
+        .is_some_and(|tags| !tags.is_empty())
+    {
+        return true;
+    }
+
+    if parsed
+        .get("tags")
+        .and_then(|value| value.as_object())
+        .is_some_and(|tags| !tags.is_empty())
+    {
+        return true;
+    }
+
+    if parsed
+        .get("keywords")
+        .and_then(|value| value.as_object())
+        .is_some_and(|keywords| !keywords.is_empty())
+    {
+        return true;
+    }
+
+    false
+}
+
 fn library_needs_migration(dest: &Path) -> Result<bool, String> {
     if !dest.is_file() {
         return Ok(true);
@@ -40,6 +84,10 @@ fn library_needs_migration(dest: &Path) -> Result<bool, String> {
     let raw = std::fs::read_to_string(dest).map_err(|e| e.to_string())?;
     let parsed: serde_json::Value =
         serde_json::from_str(&raw).map_err(|e| format!("Invalid library JSON: {e}"))?;
+
+    if library_has_user_data(&parsed) {
+        return Ok(false);
+    }
 
     let folders_empty = parsed
         .get("folders")

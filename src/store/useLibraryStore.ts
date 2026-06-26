@@ -167,6 +167,45 @@ function normalizeFolderPath(path: string): string {
   return path.replace(/\\/g, "/");
 }
 
+function normalizeExcludedPaths(paths: string[]): string[] {
+  const seen = new Set<string>();
+  const normalized: string[] = [];
+
+  for (const path of paths) {
+    const value = normalizeFolderPath(path);
+    if (!value || seen.has(value)) continue;
+    seen.add(value);
+    normalized.push(value);
+  }
+
+  return normalized;
+}
+
+function cloneLibraryMeta(meta: LibraryMeta): LibraryMeta {
+  return structuredClone(meta);
+}
+
+let libraryWriteChain: Promise<void> = Promise.resolve();
+
+function queueLibraryWrite(
+  get: () => LibraryStore,
+  apply: (meta: LibraryMeta, folders: WatchedFolder[]) => void,
+): Promise<void> {
+  libraryWriteChain = libraryWriteChain
+    .then(async () => {
+      const meta = cloneLibraryMeta(get().meta);
+      const folders = get().folders.map((folder) => ({ ...folder }));
+      apply(meta, folders);
+      useLibraryStore.setState({ meta, folders });
+      await writeJsonFile(LIBRARY_FILE, { ...meta, folders });
+    })
+    .catch((error) => {
+      console.error("[gif-picker] failed to persist library", error);
+    });
+
+  return libraryWriteChain;
+}
+
 export const useLibraryStore = create<LibraryStore>((set, get) => ({
   settings: DEFAULT_SETTINGS,
   meta: DEFAULT_META,
@@ -201,7 +240,9 @@ export const useLibraryStore = create<LibraryStore>((set, get) => ({
       favorites: library.favorites ?? [],
       tags: library.tags ?? {},
       tagOrder: library.tagOrder ?? [],
-      excluded: library.excluded ?? [],
+      excluded: normalizeExcludedPaths(
+        Array.isArray(library.excluded) ? library.excluded : [],
+      ),
       keywords: library.keywords ?? {},
     };
 
@@ -217,7 +258,10 @@ export const useLibraryStore = create<LibraryStore>((set, get) => ({
             name: folder.name,
             path: normalizeFolderPath(folder.path),
           }));
-          await writeJsonFile(LIBRARY_FILE, { ...meta, folders });
+          await queueLibraryWrite(get, (nextMeta, nextFolders) => {
+            Object.assign(nextMeta, meta);
+            nextFolders.splice(0, nextFolders.length, ...folders);
+          });
         }
       } catch {
         // no legacy file
@@ -265,9 +309,9 @@ export const useLibraryStore = create<LibraryStore>((set, get) => ({
       ...f,
       path: normalizeFolderPath(f.path),
     }));
-    set({ folders: normalized });
-    const { meta } = get();
-    await writeJsonFile(LIBRARY_FILE, { ...meta, folders: normalized });
+    await queueLibraryWrite(get, (_meta, nextFolders) => {
+      nextFolders.splice(0, nextFolders.length, ...normalized);
+    });
   },
 
   addFolder: async (folder) => {
@@ -299,71 +343,67 @@ export const useLibraryStore = create<LibraryStore>((set, get) => ({
   },
 
   toggleFavorite: async (path) => {
-    const meta = structuredClone(get().meta);
-    const index = meta.favorites.indexOf(path);
-    if (index >= 0) {
-      meta.favorites.splice(index, 1);
-    } else {
-      meta.favorites.unshift(path);
-    }
-    set({ meta });
-    await writeJsonFile(LIBRARY_FILE, { ...meta, folders: get().folders });
+    await queueLibraryWrite(get, (meta) => {
+      const index = meta.favorites.indexOf(path);
+      if (index >= 0) {
+        meta.favorites.splice(index, 1);
+      } else {
+        meta.favorites.unshift(path);
+      }
+    });
   },
 
   createTag: async (rawTag) => {
     const tag = normalizeTag(rawTag);
     if (!tag) return;
 
-    const meta = structuredClone(get().meta);
-    if (meta.tagOrder.includes(tag)) return;
-
-    meta.tagOrder.push(tag);
-    set({ meta });
-    await writeJsonFile(LIBRARY_FILE, { ...meta, folders: get().folders });
+    await queueLibraryWrite(get, (meta) => {
+      if (meta.tagOrder.includes(tag)) return;
+      meta.tagOrder.push(tag);
+    });
   },
 
   addTag: async (path, rawTag) => {
     const tag = normalizeTag(rawTag);
     if (!tag) return;
 
-    const meta = structuredClone(get().meta);
-    const existing = meta.tags[path] ?? [];
-    if (!existing.includes(tag)) {
-      meta.tags[path] = [...existing, tag];
-    }
-    if (!meta.tagOrder.includes(tag)) {
-      meta.tagOrder.push(tag);
-    }
-    set({ meta });
-    await writeJsonFile(LIBRARY_FILE, { ...meta, folders: get().folders });
+    await queueLibraryWrite(get, (meta) => {
+      const existing = meta.tags[path] ?? [];
+      if (!existing.includes(tag)) {
+        meta.tags[path] = [...existing, tag];
+      }
+      if (!meta.tagOrder.includes(tag)) {
+        meta.tagOrder.push(tag);
+      }
+    });
   },
 
   removeTagFromItem: async (path, rawTag) => {
     const tag = normalizeTag(rawTag);
-    const meta = structuredClone(get().meta);
-    const existing = meta.tags[path] ?? [];
-    if (!existing.includes(tag)) return;
 
-    meta.tags[path] = existing.filter((value) => value !== tag);
-    if (meta.tags[path].length === 0) {
-      delete meta.tags[path];
-    }
-    set({ meta });
-    await writeJsonFile(LIBRARY_FILE, { ...meta, folders: get().folders });
+    await queueLibraryWrite(get, (meta) => {
+      const existing = meta.tags[path] ?? [];
+      if (!existing.includes(tag)) return;
+
+      meta.tags[path] = existing.filter((value) => value !== tag);
+      if (meta.tags[path].length === 0) {
+        delete meta.tags[path];
+      }
+    });
   },
 
   deleteTag: async (tag) => {
     const normalized = normalizeTag(tag);
-    const meta = structuredClone(get().meta);
-    for (const path of Object.keys(meta.tags)) {
-      meta.tags[path] = meta.tags[path].filter((value) => value !== normalized);
-      if (meta.tags[path].length === 0) {
-        delete meta.tags[path];
+
+    await queueLibraryWrite(get, (meta) => {
+      for (const path of Object.keys(meta.tags)) {
+        meta.tags[path] = meta.tags[path].filter((value) => value !== normalized);
+        if (meta.tags[path].length === 0) {
+          delete meta.tags[path];
+        }
       }
-    }
-    meta.tagOrder = meta.tagOrder.filter((value) => value !== normalized);
-    set({ meta });
-    await writeJsonFile(LIBRARY_FILE, { ...meta, folders: get().folders });
+      meta.tagOrder = meta.tagOrder.filter((value) => value !== normalized);
+    });
 
     const { settings } = get();
     if (settings.blurTags.includes(normalized)) {
@@ -374,68 +414,67 @@ export const useLibraryStore = create<LibraryStore>((set, get) => ({
   },
 
   reorderTags: async (fromIndex, toIndex) => {
-    const meta = structuredClone(get().meta);
-    const [moved] = meta.tagOrder.splice(fromIndex, 1);
-    if (!moved) return;
-    meta.tagOrder.splice(toIndex, 0, moved);
-    set({ meta });
-    await writeJsonFile(LIBRARY_FILE, { ...meta, folders: get().folders });
+    await queueLibraryWrite(get, (meta) => {
+      const [moved] = meta.tagOrder.splice(fromIndex, 1);
+      if (!moved) return;
+      meta.tagOrder.splice(toIndex, 0, moved);
+    });
   },
 
   excludePath: async (path) => {
-    const meta = structuredClone(get().meta);
-    if (!meta.excluded.includes(path)) {
-      meta.excluded.push(path);
-    }
-    set({ meta });
-    await writeJsonFile(LIBRARY_FILE, { ...meta, folders: get().folders });
+    const normalized = normalizeFolderPath(path);
+
+    await queueLibraryWrite(get, (meta) => {
+      if (!meta.excluded.includes(normalized)) {
+        meta.excluded.push(normalized);
+      }
+    });
   },
 
   excludePaths: async (paths) => {
     if (paths.length === 0) return;
 
-    const meta = structuredClone(get().meta);
-    const excludedSet = new Set(meta.excluded);
+    await queueLibraryWrite(get, (meta) => {
+      const excludedSet = new Set(meta.excluded);
 
-    for (const path of paths) {
-      if (!excludedSet.has(path)) {
-        meta.excluded.push(path);
-        excludedSet.add(path);
+      for (const path of paths) {
+        const normalized = normalizeFolderPath(path);
+        if (!excludedSet.has(normalized)) {
+          meta.excluded.push(normalized);
+          excludedSet.add(normalized);
+        }
       }
-    }
-
-    set({ meta });
-    await writeJsonFile(LIBRARY_FILE, { ...meta, folders: get().folders });
+    });
   },
 
   restoreExcluded: async (path) => {
-    const meta = structuredClone(get().meta);
-    meta.excluded = meta.excluded.filter((value) => value !== path);
-    set({ meta });
-    await writeJsonFile(LIBRARY_FILE, { ...meta, folders: get().folders });
+    const normalized = normalizeFolderPath(path);
+
+    await queueLibraryWrite(get, (meta) => {
+      meta.excluded = meta.excluded.filter((value) => value !== normalized);
+    });
   },
 
   restoreExcludedPaths: async (paths) => {
     if (paths.length === 0) return;
 
-    const meta = structuredClone(get().meta);
-    const restoreSet = new Set(paths);
-    meta.excluded = meta.excluded.filter((value) => !restoreSet.has(value));
-    set({ meta });
-    await writeJsonFile(LIBRARY_FILE, { ...meta, folders: get().folders });
+    const restoreSet = new Set(paths.map(normalizeFolderPath));
+
+    await queueLibraryWrite(get, (meta) => {
+      meta.excluded = meta.excluded.filter((value) => !restoreSet.has(value));
+    });
   },
 
   addKeyword: async (path, rawKeyword) => {
     const keyword = normalizeKeyword(rawKeyword);
     if (!keyword) return;
 
-    const meta = structuredClone(get().meta);
-    const existing = meta.keywords[path] ?? [];
-    if (!existing.includes(keyword)) {
-      meta.keywords[path] = [...existing, keyword];
-    }
-    set({ meta });
-    await writeJsonFile(LIBRARY_FILE, { ...meta, folders: get().folders });
+    await queueLibraryWrite(get, (meta) => {
+      const existing = meta.keywords[path] ?? [];
+      if (!existing.includes(keyword)) {
+        meta.keywords[path] = [...existing, keyword];
+      }
+    });
   },
 
 }));

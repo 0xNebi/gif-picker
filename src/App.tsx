@@ -321,7 +321,10 @@ export function App() {
 
   const favoriteSet = useMemo(() => new Set(meta.favorites), [meta.favorites]);
   const blurTagSet = useMemo(() => new Set(settings.blurTags), [settings.blurTags]);
-  const excludedSet = useMemo(() => new Set(meta.excluded), [meta.excluded]);
+  const excludedSet = useMemo(
+    () => new Set(meta.excluded.map(normalizePath)),
+    [meta.excluded],
+  );
 
   const visibleMedia = useMemo(
     () => media.filter((item) => !excludedSet.has(item.path)),
