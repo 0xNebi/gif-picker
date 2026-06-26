@@ -159,9 +159,11 @@ export function App() {
     addKeyword,
   } = useLibraryStore();
 
-  const { sidebarView, selectedFolder, selectedTag, mainView, search } = session;
+  const { sidebarView, selectedFolder, selectedTag, mainView, search: persistedSearch } =
+    session;
 
   const [media, setMedia] = useState<MediaFile[]>([]);
+  const [searchQuery, setSearchQuery] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [preview, setPreview] = useState<MediaFile | null>(null);
   const [status, setStatus] = useState("Ready");
@@ -178,14 +180,59 @@ export function App() {
   const [folderRenamePath, setFolderRenamePath] = useState<string | null>(null);
   const [discordImportOpen, setDiscordImportOpen] = useState(false);
   const searchRef = useRef<HTMLInputElement>(null);
+  const searchQueryRef = useRef(searchQuery);
+  const searchPersistTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null,
+  );
+  const searchSyncedRef = useRef(false);
   const settingsRef = useRef<SettingsViewHandle>(null);
   const hoveredMediaRef = useRef<MediaFile | null>(null);
   const updater = useAppUpdater();
   const startupUpdateCheckedRef = useRef(false);
 
+  searchQueryRef.current = searchQuery;
+
+  const scheduleSearchPersist = useCallback(
+    (value: string) => {
+      if (searchPersistTimeoutRef.current) {
+        clearTimeout(searchPersistTimeoutRef.current);
+      }
+      searchPersistTimeoutRef.current = setTimeout(() => {
+        searchPersistTimeoutRef.current = null;
+        void updateSession({ search: value });
+      }, 400);
+    },
+    [updateSession],
+  );
+
+  const flushSearchPersist = useCallback(() => {
+    if (searchPersistTimeoutRef.current) {
+      clearTimeout(searchPersistTimeoutRef.current);
+      searchPersistTimeoutRef.current = null;
+    }
+    if (searchQueryRef.current !== persistedSearch) {
+      void updateSession({ search: searchQueryRef.current });
+    }
+  }, [persistedSearch, updateSession]);
+
   useEffect(() => {
     void hydrate();
   }, [hydrate]);
+
+  useEffect(() => {
+    if (!hydrated || searchSyncedRef.current) return;
+    searchSyncedRef.current = true;
+    setSearchQuery(persistedSearch);
+  }, [hydrated, persistedSearch]);
+
+  useEffect(() => {
+    return () => {
+      if (!searchPersistTimeoutRef.current) return;
+      clearTimeout(searchPersistTimeoutRef.current);
+      searchPersistTimeoutRef.current = null;
+      void updateSession({ search: searchQueryRef.current });
+    };
+  }, [updateSession]);
 
   useEffect(() => {
     if (!hydrated) return;
@@ -361,8 +408,8 @@ export function App() {
       );
     }
 
-    if (search.trim()) {
-      const q = search.toLowerCase();
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase();
       result = result.filter((item) => {
         const nameMatch = item.name.toLowerCase().includes(q);
         const tagMatch = (meta.tags[item.path] ?? []).some((tag) =>
@@ -381,14 +428,14 @@ export function App() {
     sidebarView,
     selectedFolder,
     selectedTag,
-    search,
+    searchQuery,
     favoriteSet,
     excludedSet,
     meta.tags,
     meta.keywords,
   ]);
 
-  const gridResetKey = `${sidebarView}:${selectedFolder ?? ""}:${selectedTag ?? ""}:${search}`;
+  const gridResetKey = `${sidebarView}:${selectedFolder ?? ""}:${selectedTag ?? ""}:${searchQuery}`;
   const showFilterEmpty =
     media.length > 0 && filteredMedia.length === 0 && !isLoading;
 
@@ -1023,10 +1070,13 @@ export function App() {
                     ref={searchRef}
                     className="search-input"
                     placeholder="Search by name, tag, or keyword…"
-                    value={search}
+                    value={searchQuery}
                     onChange={(e) => {
-                      void updateSession({ search: e.target.value });
+                      const value = e.target.value;
+                      setSearchQuery(value);
+                      scheduleSearchPersist(value);
                     }}
+                    onBlur={flushSearchPersist}
                   />
                 </div>
                 <div className="toolbar-actions">
@@ -1118,7 +1168,7 @@ export function App() {
 
               <div className="status-bar">
                 {isLoading ? "Scanning…" : status}
-                {search && ` · filtered by “${search}”`}
+                {searchQuery && ` · filtered by “${searchQuery}”`}
               </div>
             </div>
 
