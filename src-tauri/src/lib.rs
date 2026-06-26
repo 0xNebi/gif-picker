@@ -777,6 +777,143 @@ async fn find_duplicate_files(
         .map_err(|error| format!("Duplicate scan task failed: {error}"))?
 }
 
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ScannedMediaFile {
+    path: String,
+    folder_path: String,
+    kind: String,
+}
+
+fn normalize_path_string(path: &Path) -> String {
+    path.to_string_lossy().replace('\\', "/")
+}
+
+fn is_image_extension(ext: &str) -> bool {
+    matches!(ext, "webp" | "png" | "jpg" | "jpeg" | "apng")
+}
+
+fn matches_media_filter(name: &str, include_videos: bool) -> bool {
+    let lower = name.to_ascii_lowercase();
+    if lower.ends_with(".gif") {
+        return true;
+    }
+    for ext in ["webp", "png", "jpg", "jpeg", "apng"] {
+        if lower.ends_with(&format!(".{ext}")) {
+            return true;
+        }
+    }
+    if include_videos {
+        for ext in ["mp4", "webm", "mov", "mkv", "m4v", "avi", "gifv"] {
+            if lower.ends_with(&format!(".{ext}")) {
+                return true;
+            }
+        }
+    }
+    false
+}
+
+fn resolve_media_kind_for_scan(path: &Path) -> Option<String> {
+    let ext = file_extension(path);
+    if is_video_extension(&ext) {
+        return Some("video".to_string());
+    }
+    if ext == "gif" {
+        let kind = read_file_header(path)
+            .ok()
+            .and_then(|header| sniff_media_kind_label(&header).map(str::to_string))
+            .unwrap_or_else(|| "gif".to_string());
+        return Some(kind);
+    }
+    if is_image_extension(&ext) {
+        return Some("image".to_string());
+    }
+    None
+}
+
+fn walk_media_files(
+    folder_path: &Path,
+    include_videos: bool,
+    folder_normalized: &str,
+    acc: &mut Vec<(PathBuf, String)>,
+) {
+    let entries = match std::fs::read_dir(folder_path) {
+        Ok(entries) => entries,
+        Err(error) => {
+            eprintln!(
+                "[gif-picker] read_dir failed for {}: {error}",
+                folder_path.display()
+            );
+            return;
+        }
+    };
+
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.is_dir() {
+            walk_media_files(&path, include_videos, folder_normalized, acc);
+            continue;
+        }
+        if !path.is_file() {
+            continue;
+        }
+        let Some(name) = path.file_name().and_then(|value| value.to_str()) else {
+            continue;
+        };
+        if matches_media_filter(name, include_videos) {
+            acc.push((path, folder_normalized.to_string()));
+        }
+    }
+}
+
+fn collect_media_candidates(folder_paths: &[String], include_videos: bool) -> Vec<(PathBuf, String)> {
+    let mut candidates = Vec::new();
+
+    for folder_path in folder_paths {
+        let path = PathBuf::from(folder_path);
+        if !path.is_dir() {
+            continue;
+        }
+        let folder_normalized = normalize_path_string(&path);
+        walk_media_files(&path, include_videos, &folder_normalized, &mut candidates);
+    }
+
+    candidates
+}
+
+fn scan_media_folders_blocking(
+    folder_paths: Vec<String>,
+    include_videos: bool,
+) -> Result<Vec<ScannedMediaFile>, String> {
+    let candidates = collect_media_candidates(&folder_paths, include_videos);
+    let scanned = candidates
+        .par_iter()
+        .filter_map(|(path, folder_path)| {
+            let kind = resolve_media_kind_for_scan(path)?;
+            Some(ScannedMediaFile {
+                path: normalize_path_string(path),
+                folder_path: folder_path.clone(),
+                kind,
+            })
+        })
+        .collect();
+
+    Ok(scanned)
+}
+
+/// Recursively scans watched folders for media files and resolves kinds in parallel.
+#[tauri::command]
+async fn scan_media_folders(
+    folder_paths: Vec<String>,
+    include_videos: bool,
+) -> Result<Vec<ScannedMediaFile>, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        scan_media_folders_blocking(folder_paths, include_videos)
+    })
+    .await
+    .map_err(|error| format!("Media scan task failed: {error}"))?
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let mut builder = tauri::Builder::default()
@@ -807,6 +944,7 @@ pub fn run() {
             find_duplicate_files,
             download_discord_gifs,
             sniff_media_kind,
+            scan_media_folders,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

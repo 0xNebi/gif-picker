@@ -9,6 +9,22 @@ export interface MediaFile {
   kind: MediaKind;
 }
 
+export interface ScannedMediaFile {
+  path: string;
+  folderPath: string;
+  kind: MediaKind;
+}
+
+export async function scanMediaFolders(
+  folderPaths: string[],
+  includeVideos: boolean,
+): Promise<ScannedMediaFile[]> {
+  return invoke<ScannedMediaFile[]>("scan_media_folders", {
+    folderPaths,
+    includeVideos,
+  });
+}
+
 const GIF_EXTENSIONS = new Set([".gif"]);
 const IMAGE_EXTENSIONS = new Set([".webp", ".png", ".jpg", ".jpeg", ".apng"]);
 const VIDEO_EXTENSIONS = new Set([".mp4", ".webm", ".mov", ".mkv", ".m4v", ".avi", ".gifv"]);
@@ -62,25 +78,6 @@ export function isGifPath(path: string): boolean {
 
 export function isVideoPath(path: string): boolean {
   return getMediaKind(path) === "video";
-}
-
-export function matchesMediaFilter(
-  name: string,
-  includeVideos: boolean,
-): boolean {
-  const lower = name.toLowerCase();
-  for (const ext of GIF_EXTENSIONS) {
-    if (lower.endsWith(ext)) return true;
-  }
-  for (const ext of IMAGE_EXTENSIONS) {
-    if (lower.endsWith(ext)) return true;
-  }
-  if (includeVideos) {
-    for (const ext of VIDEO_EXTENSIONS) {
-      if (lower.endsWith(ext)) return true;
-    }
-  }
-  return false;
 }
 
 export function mimeForPath(path: string): string {

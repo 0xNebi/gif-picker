@@ -26,9 +26,6 @@ import {
 } from "lucide-react";
 import { invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
-import { readDir } from "@tauri-apps/plugin-fs";
-
-import type { DirEntry } from "@tauri-apps/plugin-fs";
 
 import { ContextMenu, type ContextMenuItem } from "./components/ContextMenu";
 import { DiscordImportDialog } from "./components/DiscordImportDialog";
@@ -61,8 +58,7 @@ import {
 } from "./utils/extractFirstFrame";
 import {
   isGifPath,
-  matchesMediaFilter,
-  resolveMediaKind,
+  scanMediaFolders,
   type MediaFile,
 } from "./utils/mediaTypes";
 import { applyColorScheme } from "./utils/theme";
@@ -91,36 +87,6 @@ function copyMediaToastMessage(
 
 function menuIcon(icon: React.ReactNode) {
   return <span className="menu-icon">{icon}</span>;
-}
-
-async function collectMediaRecursive(
-  dirPath: string,
-  includeVideos: boolean,
-): Promise<string[]> {
-  const results: string[] = [];
-  const root = normalizePath(dirPath);
-
-  async function walk(current: string) {
-    let entries: DirEntry[] = [];
-    try {
-      entries = await readDir(current);
-    } catch (e) {
-      console.warn("[gif-picker] readDir failed for", current, e);
-      return;
-    }
-
-    for (const entry of entries) {
-      const fullPath = `${current}/${entry.name}`.replace(/\\/g, "/");
-      if (entry.isDirectory) {
-        await walk(fullPath);
-      } else if (entry.isFile && matchesMediaFilter(entry.name, includeVideos)) {
-        results.push(fullPath);
-      }
-    }
-  }
-
-  await walk(root);
-  return results;
 }
 
 async function revealInExplorer(path: string) {
@@ -277,33 +243,29 @@ export function App() {
     clearThumbnailCache();
     const byPath = new Map<string, MediaFile>();
 
-    for (const folder of folders) {
-      try {
-        const files = await collectMediaRecursive(
-          folder.path,
-          settings.includeVideos,
-        );
-        const folderPath = normalizePath(folder.path);
-        for (const f of files) {
-          const path = normalizePath(f);
-          const kind = await resolveMediaKind(path);
-          if (!kind) continue;
+    try {
+      const scanned = await scanMediaFolders(
+        folders.map((folder) => normalizePath(folder.path)),
+        settings.includeVideos,
+      );
 
-          const item: MediaFile = {
-            path,
-            name: f.split("/").pop() || f,
-            folderPath,
-            kind,
-          };
-          const existing = byPath.get(path);
-          // Overlapping watched folders can discover the same file twice.
-          if (!existing || folderPath.length > existing.folderPath.length) {
-            byPath.set(path, item);
-          }
+      for (const entry of scanned) {
+        const path = normalizePath(entry.path);
+        const folderPath = normalizePath(entry.folderPath);
+        const item: MediaFile = {
+          path,
+          name: path.split("/").pop() || path,
+          folderPath,
+          kind: entry.kind,
+        };
+        const existing = byPath.get(path);
+        // Overlapping watched folders can discover the same file twice.
+        if (!existing || folderPath.length > existing.folderPath.length) {
+          byPath.set(path, item);
         }
-      } catch (e) {
-        console.warn("scan error for", folder.path, e);
       }
+    } catch (error) {
+      console.warn("[gif-picker] media scan failed", error);
     }
 
     const all = Array.from(byPath.values());
